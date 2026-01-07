@@ -14,12 +14,6 @@ import (
 	"time"
 )
 
-var (
-	Name      = "STARTUPS"
-	Version   = "0.1.0"
-	GoVersion = "1.23"
-)
-
 func main() {
 	//路由管理
 	app := gin.New()
