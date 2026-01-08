@@ -345,7 +345,7 @@ func (g *Game) GetWinner() int {
 }
 
 func main() {
-	game := NewGame(4)
+	game := NewGame(7)
 	game.PlayRound()
 	game.PlayRound()
 	fmt.Printf("Final Scores: %v\n", game.RoundScores)
