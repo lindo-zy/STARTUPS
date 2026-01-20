@@ -28,6 +28,15 @@ func (h *RoomController) JoinRoom(c *gin.Context) {
 func (h *RoomController) LeaveRoom(c *gin.Context) {
 	return
 }
-func (h *RoomController) DeleteRoomList(c *gin.Context) {
+
+func (h *RoomController) Status(c *gin.Context) {
+	return
+}
+
+func (h *RoomController) Start(c *gin.Context) {
+	return
+}
+
+func (h *RoomController) Ready(c *gin.Context) {
 	return
 }

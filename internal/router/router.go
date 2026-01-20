@@ -8,16 +8,30 @@ import (
 
 type APIRouter struct {
 	roomController *controller.RoomController
+	playController *controller.PlayController
 }
 
-func NewAPIRouter(roomController *controller.RoomController) *APIRouter {
+func NewAPIRouter(
+	roomController *controller.RoomController,
+	playController *controller.PlayController) *APIRouter {
 	return &APIRouter{
 		roomController: roomController,
+		playController: playController,
 	}
 }
 
 func (c *APIRouter) RegisterRouter(r *gin.RouterGroup) {
-	r.GET("/room", c.roomController.CreateRoom)
+	r.POST("/room/create", c.roomController.CreateRoom)
+	r.POST("/room/join", c.roomController.JoinRoom)
+	r.DELETE("/room/leave", c.roomController.LeaveRoom)
+	r.GET("/room/status", c.roomController.Status)
+	r.POST("/room/start", c.roomController.Start)
+	r.POST("/room/ready", c.roomController.Ready)
+
+	r.POST("/play/", nil)
+	r.POST("/play/", nil)
+	r.POST("/play/", nil)
+	r.POST("/play/", nil)
 }
 
 func SetupRouter(r *gin.Engine) {
@@ -28,6 +42,8 @@ func SetupRouter(r *gin.Engine) {
 		})
 	})
 	//组织路由
-	NewAPIRouter(controller.NewRoomHandler()).RegisterRouter(r.Group("/"))
+	NewAPIRouter(
+		controller.NewRoomHandler(),
+		controller.NewPlayHandler()).RegisterRouter(r.Group("/api/"))
 
 }
