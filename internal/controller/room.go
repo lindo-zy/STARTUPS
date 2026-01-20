@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"STARTUPS/internal/response"
 	"STARTUPS/internal/service"
 	"github.com/gin-gonic/gin"
 )
@@ -17,7 +16,6 @@ func NewRoomHandler() *RoomController {
 }
 
 func (h *RoomController) CreateRoom(c *gin.Context) {
-	response.Success(c, h.roomService.GetRoom())
 	return
 }
 

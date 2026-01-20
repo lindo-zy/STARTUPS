@@ -11,12 +11,10 @@ type APIRouter struct {
 	playController *controller.PlayController
 }
 
-func NewAPIRouter(
-	roomController *controller.RoomController,
-	playController *controller.PlayController) *APIRouter {
+func NewAPIRouter() *APIRouter {
 	return &APIRouter{
-		roomController: roomController,
-		playController: playController,
+		roomController: controller.NewRoomHandler(),
+		playController: controller.NewPlayHandler(),
 	}
 }
 
@@ -42,8 +40,6 @@ func SetupRouter(r *gin.Engine) {
 		})
 	})
 	//组织路由
-	NewAPIRouter(
-		controller.NewRoomHandler(),
-		controller.NewPlayHandler()).RegisterRouter(r.Group("/api/"))
+	NewAPIRouter().RegisterRouter(r.Group("/api/"))
 
 }
