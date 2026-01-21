@@ -2,8 +2,9 @@ package router
 
 import (
 	"STARTUPS/internal/controller"
-	"github.com/gin-gonic/gin"
 	"net/http"
+
+	"github.com/gin-gonic/gin"
 )
 
 type APIRouter struct {
@@ -19,15 +20,15 @@ func NewAPIRouter() *APIRouter {
 }
 
 func (c *APIRouter) RegisterRouter(r *gin.RouterGroup) {
-	r.POST("/room/create", c.roomController.CreateRoom)
-	r.POST("/room/join", c.roomController.JoinRoom)
-	r.DELETE("/room/leave", c.roomController.LeaveRoom)
+	r.POST("/room/create", c.roomController.Create)
+	r.POST("/room/join", c.roomController.Join)
+	r.DELETE("/room/leave", c.roomController.Leave)
 	r.GET("/room/status", c.roomController.Status)
 	r.POST("/room/start", c.roomController.Start)
 	r.POST("/room/ready", c.roomController.Ready)
 
-	r.POST("/play/", nil)
-	r.POST("/play/", nil)
+	r.POST("/play/lead", nil)
+	r.POST("/play/draw", nil)
 	r.POST("/play/", nil)
 	r.POST("/play/", nil)
 }

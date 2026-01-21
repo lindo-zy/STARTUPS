@@ -2,6 +2,7 @@ package controller
 
 import (
 	"STARTUPS/internal/service"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -15,15 +16,15 @@ func NewRoomHandler() *RoomController {
 	}
 }
 
-func (h *RoomController) CreateRoom(c *gin.Context) {
+func (h *RoomController) Create(c *gin.Context) {
 	return
 }
 
-func (h *RoomController) JoinRoom(c *gin.Context) {
+func (h *RoomController) Join(c *gin.Context) {
 	return
 }
 
-func (h *RoomController) LeaveRoom(c *gin.Context) {
+func (h *RoomController) Leave(c *gin.Context) {
 	return
 }
 
