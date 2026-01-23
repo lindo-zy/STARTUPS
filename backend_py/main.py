@@ -252,16 +252,6 @@ def create_room(host_player_id: str, max_players: int = 6):
         status=RoomStatus.waiting,
     )
     rooms[room_id] = room
-    # 广播房间创建
-    asyncio.create_task(
-        broadcast_to_room(
-            room_id,
-            {
-                "type": "room_created",
-                "data": {"room_id": room_id, "host": host_player_id},
-            },
-        )
-    )
     return {"room_id": room_id, "message": "Room created"}
 
 
@@ -292,15 +282,6 @@ def join_room(room_id: str, player_id: str):
     if len(room.players) >= room.max_players:
         raise HTTPException(400, "Room is full")
     room.players.append(player_id)
-    asyncio.create_task(
-        broadcast_to_room(
-            room_id,
-            {
-                "type": "player_joined",
-                "data": {"player_id": player_id, "players": room.players},
-            },
-        )
-    )
     return {"message": f"{player_id} joined"}
 
 
@@ -319,15 +300,6 @@ def leave_room(room_id: str, player_id: str):
     if not room.players:
         del rooms[room_id]
         return {"message": "Room deleted"}
-    asyncio.create_task(
-        broadcast_to_room(
-            room_id,
-            {
-                "type": "player_left",
-                "data": {"player_id": player_id, "players": room.players},
-            },
-        )
-    )
     return {"message": f"{player_id} left"}
 
 
@@ -546,7 +518,7 @@ def play_card(
 
 @app.get("/")
 def root():
-    return {"message": "Startup Tycoon with WebSocket Broadcasting"}
+    return "服务启动成功"
 
 
 if __name__ == "__main__":
