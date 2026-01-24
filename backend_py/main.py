@@ -238,7 +238,7 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
 
 
 @app.post("/room/create")
-def create_room(host_player_id: str, max_players: int = 6):
+def create_room(host_player_id: str, max_players: int = 7):
     if not host_player_id.strip():
         raise HTTPException(400, "Player ID required")
     if max_players < 3 or max_players > 7:
@@ -252,7 +252,7 @@ def create_room(host_player_id: str, max_players: int = 6):
         status=RoomStatus.waiting,
     )
     rooms[room_id] = room
-    return {"room_id": room_id, "message": "Room created"}
+    return {"room_id": room_id}
 
 
 @app.get("/room/list")
@@ -270,7 +270,7 @@ def list_rooms():
     ]
 
 
-@app.post("/room/{room_id}/join")
+@app.post("/room/join")
 def join_room(room_id: str, player_id: str):
     if room_id not in rooms:
         raise HTTPException(404, "Room not found")
@@ -282,10 +282,10 @@ def join_room(room_id: str, player_id: str):
     if len(room.players) >= room.max_players:
         raise HTTPException(400, "Room is full")
     room.players.append(player_id)
-    return {"message": f"{player_id} joined"}
+    return {"message": "success"}
 
 
-@app.post("/room/{room_id}/leave")
+@app.post("/room/leave")
 def leave_room(room_id: str, player_id: str):
     if room_id not in rooms:
         raise HTTPException(404, "Room not found")
@@ -299,11 +299,11 @@ def leave_room(room_id: str, player_id: str):
         room.host_player_id = room.players[0]
     if not room.players:
         del rooms[room_id]
-        return {"message": "Room deleted"}
-    return {"message": f"{player_id} left"}
+        return {"message": "success"}
+    return {"message": "success"}
 
 
-@app.post("/room/{room_id}/start")
+@app.post("/room/start")
 def start_game(room_id: str, host_player_id: str):
     if room_id not in rooms:
         raise HTTPException(404, "Room not found")
@@ -328,12 +328,12 @@ def start_game(room_id: str, host_player_id: str):
                 },
             )
         )
-        return {"message": "Game started"}
+        return {"message": "success"}
     except Exception as e:
         raise HTTPException(500, f"Game init failed: {e}")
 
 
-@app.delete("/room/{room_id}")
+@app.delete("/room/delete")
 def delete_room(room_id: str, requester_id: str):
     if room_id not in rooms:
         raise HTTPException(404, "Room not found")
@@ -343,7 +343,7 @@ def delete_room(room_id: str, requester_id: str):
         asyncio.create_task(
             broadcast_to_room(room_id, {"type": "room_deleted", "data": {}})
         )
-        return {"message": "Room deleted"}
+        return {"message": "success"}
     raise HTTPException(403, "Cannot delete active room")
 
 
@@ -357,7 +357,7 @@ def get_room(room_id: str):
 # ====== 游戏动作接口（添加广播）======
 
 
-@app.post("/room/{room_id}/action/draw_from_deck")
+@app.post("/room/action/draw")
 def draw_from_deck(room_id: str, player_id: str):
     room = _get_active_room(room_id)
     game = room.game_state
@@ -400,7 +400,7 @@ def draw_from_deck(room_id: str, player_id: str):
     return {"drawn": card, "money_left": game.players[player_id].money}
 
 
-@app.post("/room/{room_id}/action/take_from_market")
+@app.post("/room/action/take")
 def take_from_market(room_id: str, player_id: str, card_index: int):
     room = _get_active_room(room_id)
     game = room.game_state
@@ -440,7 +440,7 @@ def take_from_market(room_id: str, player_id: str, card_index: int):
     return {"taken": company, "coins_gained": coins}
 
 
-@app.post("/room/{room_id}/action/play_card")
+@app.post("/room/action/play")
 def play_card(
     room_id: str,
     player_id: str,
@@ -513,7 +513,7 @@ def play_card(
     }
     asyncio.create_task(broadcast_to_room(room_id, msg))
 
-    return {"status": "success"}
+    return {"message": "success"}
 
 
 @app.get("/")
