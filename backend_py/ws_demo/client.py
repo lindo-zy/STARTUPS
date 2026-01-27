@@ -4,8 +4,8 @@ import asyncio
 import websockets
 
 
-async def interactive_client(client_id: int):
-    uri = f"ws://localhost:8080/ws/{client_id}"
+async def interactive_client(client_id: str):
+    uri = f"ws://localhost/ws/{client_id}"
     try:
         async with websockets.connect(uri) as websocket:
             print(
@@ -53,4 +53,4 @@ async def interactive_client(client_id: int):
 
 if __name__ == "__main__":
 
-    asyncio.run(interactive_client(7))
+    asyncio.run(interactive_client("123456"))
