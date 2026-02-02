@@ -1,5 +1,4 @@
-import React from "react";
-
+import React, { useEffect } from "react";
 import {
   Box,
   Button,
@@ -11,8 +10,18 @@ import {
   useColorModeValue,
   Text,
 } from "@chakra-ui/react";
+import { v4 as uuidv4 } from "uuid";
+import { createRoom } from "../../services/api";
+import { useNavigate } from "react-router-dom";
 
 const GameLobby: React.FC = () => {
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (!localStorage.getItem("playerId")) {
+      const playerId = uuidv4();
+      localStorage.setItem("playerId", playerId);
+    }
+  }, []);
   const bgColor = useColorModeValue("gray.50", "gray.900");
   const cardBg = useColorModeValue("white", "gray.800");
   const textColor = useColorModeValue("gray.800", "white");
@@ -85,6 +94,18 @@ const GameLobby: React.FC = () => {
                   _active={{ bg: "blue.700" }}
                   _focus={{ boxShadow: "0 0 0 3px rgba(59, 130, 246, 0.5)" }}
                   transition="all 0.3s ease"
+                  onClick={async () => {
+                    const playerId = localStorage.getItem("playerId");
+                    if (!playerId) {
+                      return;
+                    }
+                    const res = await createRoom({ host_player_id: playerId });
+                    if (res) {
+                      navigate(`/game`, {
+                        state: { room_id: res.room_id },
+                      });
+                    }
+                  }}
                 >
                   创建房间
                 </Button>
@@ -121,22 +142,6 @@ const GameLobby: React.FC = () => {
                   </Button>
                 </HStack>
               </Box>
-
-              {/* 测试游戏页面链接 */}
-              {/*  <Box mt={8} textAlign="center">
-                <Button
-                  as={Link}
-                  to="/game"
-                  variant="link"
-                  colorScheme="blue"
-                  fontSize="md"
-                  rightIcon={<ArrowRightIcon />}
-                  _hover={{ textDecoration: "underline", color: "blue.700" }}
-                  transition="all 0.3s ease"
-                >
-                  进入测试游戏页面
-                </Button>
-              </Box> */}
             </VStack>
           </Box>
         </Box>
