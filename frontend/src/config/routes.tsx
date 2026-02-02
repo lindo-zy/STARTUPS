@@ -1,7 +1,9 @@
-import React from "react";
+import { lazy } from "react";
 
-const GameLobby = React.lazy(() => import("../pages/GameLobby"));
-const GamePage = React.lazy(() => import("../pages/GamePage"));
+// 导入组件
+const GameLobby = lazy(() => import("../pages/GameLobby"));
+const GamePage = lazy(() => import("../pages/GamePage"));
+// const ApiDocs = lazy(() => import("../pages/ApiDocs"));
 
 const routes = [
   {
@@ -12,6 +14,10 @@ const routes = [
     path: "/game",
     element: <GamePage />,
   },
+  // {
+  //   path: "/api-docs",
+  //   element: <ApiDocs />,
+  // },
 ];
 
 export default routes;

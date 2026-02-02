@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 
 import {
   Box,
@@ -11,8 +11,18 @@ import {
   useColorModeValue,
   Text,
 } from "@chakra-ui/react";
+import { v4 as uuidv4 } from "uuid";
+import { createRoom } from "../services/api";
+import { useNavigate } from "react-router-dom";
 
 const GameLobby: React.FC = () => {
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (!localStorage.getItem("playerId")) {
+      const playerId = uuidv4();
+      localStorage.setItem("playerId", playerId);
+    }
+  }, []);
   const bgColor = useColorModeValue("gray.50", "gray.900");
   const cardBg = useColorModeValue("white", "gray.800");
   const textColor = useColorModeValue("gray.800", "white");
@@ -85,6 +95,22 @@ const GameLobby: React.FC = () => {
                   _active={{ bg: "blue.700" }}
                   _focus={{ boxShadow: "0 0 0 3px rgba(59, 130, 246, 0.5)" }}
                   transition="all 0.3s ease"
+                  onClick={async () => {
+                    const playerId = localStorage.getItem("playerId");
+                    if (!playerId) {
+                      return;
+                    }
+                    const res = await createRoom({ host_player_id: playerId });
+                    if (res) {
+                      navigate(`/game`, {
+                        // 使用 navigate 替代 history.push
+                        state: { room_id: res.data.room_id },
+                      });
+                    }
+                    // if (res.code === 200) {
+                    //   window.location.href = `/game?room_id=${res.data.room_id}`;
+                    // }
+                  }}
                 >
                   创建房间
                 </Button>
