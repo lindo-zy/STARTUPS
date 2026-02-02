@@ -1,8 +1,10 @@
+export const COMPANIES = [5, 6, 7, 8, 9, 10];
+
 export const COMPANY_COLORS: Record<number, string> = {
-  5: "pink.400",
-  6: "orange.400",
-  7: "yellow.400",
-  8: "green.400",
-  9: "blue.400",
-  10: "purple.400",
+  5: "#fbbf24",
+  6: "#fca5a5",
+  7: "#06b6d4",
+  8: "#c084fc",
+  9: "#84cc16",
+  10: "#f43f5e",
 };
