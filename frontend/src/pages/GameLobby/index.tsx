@@ -1,5 +1,4 @@
 import React, { useEffect } from "react";
-
 import {
   Box,
   Button,
@@ -12,7 +11,7 @@ import {
   Text,
 } from "@chakra-ui/react";
 import { v4 as uuidv4 } from "uuid";
-import { createRoom } from "../services/api";
+import { createRoom } from "../../services/api";
 import { useNavigate } from "react-router-dom";
 
 const GameLobby: React.FC = () => {
@@ -103,13 +102,9 @@ const GameLobby: React.FC = () => {
                     const res = await createRoom({ host_player_id: playerId });
                     if (res) {
                       navigate(`/game`, {
-                        // 使用 navigate 替代 history.push
-                        state: { room_id: res.data.room_id },
+                        state: { room_id: res.room_id },
                       });
                     }
-                    // if (res.code === 200) {
-                    //   window.location.href = `/game?room_id=${res.data.room_id}`;
-                    // }
                   }}
                 >
                   创建房间
@@ -147,22 +142,6 @@ const GameLobby: React.FC = () => {
                   </Button>
                 </HStack>
               </Box>
-
-              {/* 测试游戏页面链接 */}
-              {/*  <Box mt={8} textAlign="center">
-                <Button
-                  as={Link}
-                  to="/game"
-                  variant="link"
-                  colorScheme="blue"
-                  fontSize="md"
-                  rightIcon={<ArrowRightIcon />}
-                  _hover={{ textDecoration: "underline", color: "blue.700" }}
-                  transition="all 0.3s ease"
-                >
-                  进入测试游戏页面
-                </Button>
-              </Box> */}
             </VStack>
           </Box>
         </Box>
