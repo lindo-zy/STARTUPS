@@ -16,18 +16,18 @@ import {
   VStack,
   HStack,
   Center,
-  Image,
   Tooltip,
-  SimpleGrid,
-  IconButton,
+  Icon,
 } from "@chakra-ui/react";
+import { FaCoins, FaSignOutAlt, FaBoxOpen, FaGrinStars } from "react-icons/fa";
+import { GiCardDraw } from "react-icons/gi";
 import { InvestmentGrid } from "./components/InvestmentGrid";
-import { COMPANY_COLORS } from "../../constants/game";
+import { COMPANY_COLORS, COMPANIES } from "../../constants/game";
+import CardItem from "./components/CardItem";
 
 // --- 模拟数据类型与辅助函数 ---
-const COMPANIES = [5, 6, 7, 8, 9, 10];
 
-const getCardImage = (company: number) => `/img/p${company}.jpg`;
+// const getCardImage = (company: number) => `/img/p${company}.jpg`;
 
 interface Player {
   id: string;
@@ -49,7 +49,7 @@ const GamePage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const { socket, isConnected, connect, disconnect } = useSocket();
+  const { isConnected, connect, disconnect } = useSocket();
   const toast = useToast();
 
   const roomId = location.state?.room_id || searchParams.get("room_id");
@@ -59,12 +59,9 @@ const GamePage: React.FC = () => {
       navigate("/");
       return;
     }
-    const playerId = localStorage.getItem("playerId");
-    if (playerId) {
-      connect(roomId, playerId);
-    }
+    // 连接逻辑在真实后端集成时开启
     return () => disconnect();
-  }, [roomId, navigate]);
+  }, [roomId, navigate, connect, disconnect]);
 
   useEffect(() => {
     if (isConnected) {
@@ -96,7 +93,7 @@ const GamePage: React.FC = () => {
     name: "我",
     coins: 10,
     handCount: 3,
-    investments: { 8: 1, 9: 2 },
+    investments: { 5: 1, 6: 1, 7: 1, 8: 1, 9: 2, 10: 1 },
     antitrustTokens: [9],
     isActive: false,
   };
@@ -110,8 +107,6 @@ const GamePage: React.FC = () => {
   const myHand = [5, 6, 10]; // 手牌中的公司ID
 
   const deckCount = 38;
-
-  // --- 子组件 ---
 
   return (
     <Box
@@ -138,8 +133,12 @@ const GamePage: React.FC = () => {
           </Badge>
         </HStack>
         <Link to="/">
-          <Button size="xs" colorScheme="red">
-            退出游戏
+          <Button
+            size="xs"
+            colorScheme="red"
+            leftIcon={<Icon as={FaSignOutAlt} />}
+          >
+            退出
           </Button>
         </Link>
       </Flex>
@@ -151,23 +150,23 @@ const GamePage: React.FC = () => {
           {opponents.map((player) => (
             <VStack
               key={player.id}
-              bg={player.isActive ? "white" : "transparent"}
-              p={2}
+              bg="white"
+              p={5}
               borderRadius="md"
-              borderWidth={player.isActive ? 1 : 0}
-              borderColor={player.isActive ? "yellow.400" : "transparent"}
+              borderWidth={player.isActive ? 2 : 0}
+              borderColor={player.isActive ? "yellow.400" : "white"}
               boxShadow={player.isActive ? "lg" : "none"}
               spacing={2}
               minW="120px"
             >
-              {/* 不显示头像，仅显示信息 */}
               <VStack spacing={0} align="center">
                 <Text color="gray.700" fontSize="sm" fontWeight="bold">
                   {player.name}
                 </Text>
-                <HStack spacing={2}>
+                <HStack spacing={1} align="center">
+                  <Icon as={FaCoins} color="yellow.500" boxSize={3} />
                   <Text fontSize="xs" color="yellow.600" fontWeight="bold">
-                    💰{player.coins}
+                    {player.coins}
                   </Text>
                 </HStack>
               </VStack>
@@ -205,9 +204,7 @@ const GamePage: React.FC = () => {
                 transition="all 0.2s"
               >
                 <Center h="full">
-                  <Text color="whiteAlpha.800" fontWeight="bold" fontSize="2xl">
-                    DECK
-                  </Text>
+                  <Icon as={GiCardDraw} boxSize={16} color="whiteAlpha.800" />
                 </Center>
                 <Badge
                   position="absolute"
@@ -228,7 +225,7 @@ const GamePage: React.FC = () => {
                 </Badge>
               </Box>
               <Button size="sm" colorScheme="blue" variant="outline">
-                抽牌 (-1💰)
+                抽牌 (-1 <Icon as={FaCoins} ml={1} />)
               </Button>
             </VStack>
 
@@ -248,60 +245,47 @@ const GamePage: React.FC = () => {
               gap={4}
             >
               {market.length === 0 && (
-                <Text color="gray.400">市场空空如也</Text>
+                <VStack spacing={1}>
+                  <Icon as={FaBoxOpen} boxSize={8} color="gray.300" />
+                  <Text color="gray.400" fontSize="sm">
+                    市场空空如也
+                  </Text>
+                </VStack>
               )}
               {market.map((card) => (
                 <VStack key={card.id} position="relative">
                   <Tooltip label={`点击拿取 (获得 ${card.coins} 金币)`}>
                     <Box
-                      w="24"
-                      h="36"
-                      borderRadius="lg"
-                      overflow="hidden"
-                      boxShadow="md"
                       cursor="pointer"
                       _hover={{ transform: "scale(1.05)", boxShadow: "xl" }}
                       transition="all 0.2s"
                       position="relative"
                     >
-                      <Image
-                        src={getCardImage(card.company)}
-                        alt={`Company ${card.company}`}
-                        w="full"
-                        h="full"
-                        objectFit="cover"
-                      />
-                      {/* 卡牌上的金币 */}
+                      <CardItem company={card.company} size={10} />
                       {card.coins > 0 && (
-                        <Flex
+                        <Badge
                           position="absolute"
-                          inset={0}
-                          bg="blackAlpha.600"
-                          align="center"
-                          justify="center"
+                          height="2.5rem"
+                          width="2.5rem"
+                          top="-2"
+                          right="-2"
+                          bg="yellow.400"
+                          fontSize="large"
+                          borderRadius="full"
+                          p={5}
+                          boxShadow="md"
+                          display="flex"
+                          alignItems="center"
+                          justifyContent="center"
+                          gap={1}
+                          fontWeight="bold"
+                          fontFamily="Fredoka"
                         >
-                          <VStack spacing={-1}>
-                            <Text fontSize="2xl">💰</Text>
-                            <Text
-                              color="yellow.300"
-                              fontWeight="bold"
-                              fontSize="lg"
-                            >
-                              {card.coins}
-                            </Text>
-                          </VStack>
-                        </Flex>
+                          {card.coins}
+                        </Badge>
                       )}
                     </Box>
                   </Tooltip>
-                  {/* 公司徽章 */}
-                  <Badge
-                    bg={COMPANY_COLORS[card.company]}
-                    color="white"
-                    boxShadow="sm"
-                  >
-                    {card.company}
-                  </Badge>
                 </VStack>
               ))}
             </HStack>
@@ -325,9 +309,12 @@ const GamePage: React.FC = () => {
               <Text color="gray.800" fontWeight="bold" fontSize="xl">
                 我 ({me.name})
               </Text>
-              <Text color="yellow.600" fontSize="lg" fontWeight="bold">
-                💰 {me.coins} 金币
-              </Text>
+              <HStack>
+                <Icon as={FaCoins} color="yellow.500" boxSize={5} />
+                <Text color="yellow.600" fontSize="lg" fontWeight="bold">
+                  {me.coins} 金币
+                </Text>
+              </HStack>
             </VStack>
 
             <Box
@@ -350,55 +337,28 @@ const GamePage: React.FC = () => {
                       key={company}
                       opacity={count > 0 ? 1 : 0.4}
                       position="relative"
+                      wrap={"wrap"}
                     >
-                      <Box
-                        w="16"
-                        h="24"
-                        position="relative"
-                        boxShadow="sm"
-                        borderRadius="md"
-                      >
-                        <Image
-                          src={getCardImage(company)}
-                          w="full"
-                          h="full"
-                          objectFit="cover"
-                          borderRadius="md"
-                          filter={
-                            count === 0
-                              ? "grayscale(100%) opacity(0.7)"
-                              : "none"
-                          }
-                        />
-                        <Center
-                          position="absolute"
-                          inset={0}
-                          bg={count > 0 ? "blackAlpha.400" : "transparent"}
-                          borderRadius="md"
-                        >
-                          {count > 0 && (
-                            <Text
-                              color="white"
-                              fontWeight="bold"
-                              fontSize="xl"
-                              textShadow="0 1px 2px rgba(0,0,0,0.5)"
-                            >
-                              {count}
-                            </Text>
-                          )}
-                        </Center>
-                      </Box>
+                      <CardItem company={company} size={8} />
                       {hasToken && (
-                        <Badge
-                          colorScheme="purple"
+                        <Box
                           position="absolute"
-                          top="-2"
-                          right="-2"
-                          fontSize="0.7em"
+                          top="2"
+                          right="2"
+                          zIndex={1}
+                          bg="white"
+                          borderWidth={1}
+                          borderRadius="full"
                           boxShadow="sm"
+                          p={0.5}
+                          display="flex"
                         >
-                          🛡️ 垄断
-                        </Badge>
+                          <Icon
+                            as={FaGrinStars}
+                            color={COMPANY_COLORS[company]}
+                            boxSize={"2rem"}
+                          />
+                        </Box>
                       )}
                     </VStack>
                   );
@@ -415,10 +375,6 @@ const GamePage: React.FC = () => {
               {myHand.map((companyId, idx) => (
                 <Box
                   key={idx}
-                  w="32"
-                  h="48"
-                  borderRadius="xl"
-                  boxShadow="xl"
                   overflow="hidden"
                   cursor="pointer"
                   transition="all 0.3s"
@@ -434,17 +390,18 @@ const GamePage: React.FC = () => {
                     transform: `rotate(${(idx - 1) * 5}deg) translateY(${Math.abs(idx - 1) * 5}px)`,
                   }}
                 >
-                  <Image
+                  <CardItem company={companyId} size={12} />
+                  {/* <Image
                     src={getCardImage(companyId)}
                     w="full"
                     h="full"
                     objectFit="cover"
-                  />
+                  /> */}
                   {/* 悬停显示的操作层 */}
                   <Flex
                     position="absolute"
                     inset={0}
-                    bg="whiteAlpha.900"
+                    // bg="whiteAlpha.900"
                     opacity={0}
                     _hover={{ opacity: 1 }}
                     direction="column"
