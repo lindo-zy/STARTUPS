@@ -64,7 +64,7 @@ class RoomStatus(str, Enum):
 class Room(BaseModel):
     room_id: str
     host_player_id: str
-    max_players: int
+    max_players: int = 7
     players: List[str]
     status: RoomStatus
     game_state: Optional[GameState] = None
@@ -251,17 +251,14 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, player_id: str)
 
 
 @app.post("/room/create")
-def create_room(host_player_id: str, max_players: int = 7):
+def create_room(host_player_id: str):
     if not host_player_id.strip():
         raise HTTPException(400, "Player ID required")
-    if max_players < 3 or max_players > 7:
-        raise HTTPException(400, "Max players must be 3–7")
     # room_id = str(uuid.uuid4())[:8]
     room_id = "123456"
     room = Room(
         room_id=room_id,
         host_player_id=host_player_id,
-        max_players=max_players,
         players=[host_player_id],
         status=RoomStatus.waiting,
     )
@@ -297,7 +294,7 @@ def join_room(room_id: str, player_id: str):
     if len(room.players) >= room.max_players:
         raise HTTPException(400, "Room is full")
     room.players.append(player_id)
-    return Response()
+    return Response(data=room)
 
 
 @app.post("/room/leave")
@@ -327,13 +324,14 @@ def start_game(room_id: str, host_player_id: str):
         raise HTTPException(403, "Only host can start")
     if len(room.players) < 3:
         raise HTTPException(400, "Need at least 3 players")
+    if len(room.players) > 7:
+        raise HTTPException(400, "more than 7 players")
     if room.status != RoomStatus.waiting:
         raise HTTPException(400, "Game already started")
     try:
         game_state = _create_game_state(room.players)
         room.game_state = game_state
         room.status = RoomStatus.active
-        # 广播游戏开始
         asyncio.create_task(
             broadcast_to_room(
                 room_id,
@@ -367,9 +365,6 @@ def get_room(room_id: str):
     if room_id not in rooms:
         raise HTTPException(404, "Room not found")
     return Response(data=rooms[room_id])
-
-
-# ====== 游戏动作接口（添加广播）======
 
 
 @app.post("/room/action/draw")
