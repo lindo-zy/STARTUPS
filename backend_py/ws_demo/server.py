@@ -40,4 +40,4 @@ async def websocket_endpoint(websocket: WebSocket, client_id: int):
 if __name__ == "__main__":
     from uvicorn import run
 
-    run(app, host="0.0.0.0", port=8080)
+    run(app, host="0.0.0.0", port=80)

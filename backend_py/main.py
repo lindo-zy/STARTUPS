@@ -312,7 +312,7 @@ def leave_room(room_id: str, player_id: str):
     if not room.players:
         del rooms[room_id]
         return Response()
-    return Response()
+    return Response(data=room)
 
 
 @app.post("/room/start")
@@ -337,11 +337,11 @@ def start_game(room_id: str, host_player_id: str):
                 room_id,
                 {
                     "type": "game_started",
-                    "data": {"current_player": game_state.current_player_id},
+                    "data": room,
                 },
             )
         )
-        return Response()
+        return Response(data=room)
     except Exception as e:
         raise HTTPException(500, f"Game init failed: {e}")
 
@@ -386,6 +386,7 @@ def draw_from_deck(room_id: str, player_id: str):
     if game.players[player_id].money < cost:
         raise HTTPException(400, f"Need {cost} money")
 
+    # game.market_deck.remove(card)
     card = game.market_deck.pop()
     game.players[player_id].money -= cost
     game.players[player_id].hand.append(card)
@@ -406,7 +407,7 @@ def draw_from_deck(room_id: str, player_id: str):
             },
         )
     )
-    return Response(data={"drawn": card, "money_left": game.players[player_id].money})
+    return Response(data=room)
 
 
 @app.post("/room/action/take")
@@ -446,7 +447,7 @@ def take_from_market(room_id: str, player_id: str, card_index: int):
         )
     )
 
-    return Response(data={"taken": company, "coins_gained": coins})
+    return Response(data=room)
 
 
 @app.post("/room/action/play")
@@ -522,7 +523,7 @@ def play_card(
     }
     asyncio.create_task(broadcast_to_room(room_id, msg))
 
-    return Response()
+    return Response(data=room)
 
 
 @app.get("/")
