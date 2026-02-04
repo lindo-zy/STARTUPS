@@ -218,8 +218,8 @@ def _get_active_room(room_id: str) -> Room:
 async def websocket_endpoint(websocket: WebSocket, room_id: str, player_id: str):
     await websocket.accept()
 
-    if player_id in rooms[room_id].players:
-        await websocket.close(code=1008, reason="User already in room")
+    if room_id not in rooms or player_id not in rooms[room_id].players:
+        await websocket.close(code=1008, reason="Player not in room")
         return
 
     # 初始化连接池
