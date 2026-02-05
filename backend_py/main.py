@@ -64,7 +64,7 @@ class RoomStatus(str, Enum):
 class Room(BaseModel):
     room_id: str
     host_player_id: str
-    max_players: int
+    max_players: int = 7
     players: List[str]
     status: RoomStatus
     game_state: Optional[GameState] = None
@@ -218,8 +218,8 @@ def _get_active_room(room_id: str) -> Room:
 async def websocket_endpoint(websocket: WebSocket, room_id: str, player_id: str):
     await websocket.accept()
 
-    if player_id in rooms[room_id].players:
-        await websocket.close(code=1008, reason="User already in room")
+    if room_id not in rooms or player_id not in rooms[room_id].players:
+        await websocket.close(code=1008, reason="Player not in room")
         return
 
     # 初始化连接池
@@ -251,17 +251,14 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, player_id: str)
 
 
 @app.post("/room/create")
-def create_room(host_player_id: str, max_players: int = 7):
+def create_room(host_player_id: str):
     if not host_player_id.strip():
         raise HTTPException(400, "Player ID required")
-    if max_players < 3 or max_players > 7:
-        raise HTTPException(400, "Max players must be 3–7")
     # room_id = str(uuid.uuid4())[:8]
     room_id = "123456"
     room = Room(
         room_id=room_id,
         host_player_id=host_player_id,
-        max_players=max_players,
         players=[host_player_id],
         status=RoomStatus.waiting,
     )
@@ -297,7 +294,7 @@ def join_room(room_id: str, player_id: str):
     if len(room.players) >= room.max_players:
         raise HTTPException(400, "Room is full")
     room.players.append(player_id)
-    return Response()
+    return Response(data=room)
 
 
 @app.post("/room/leave")
@@ -315,7 +312,7 @@ def leave_room(room_id: str, player_id: str):
     if not room.players:
         del rooms[room_id]
         return Response()
-    return Response()
+    return Response(data=room)
 
 
 @app.post("/room/start")
@@ -327,23 +324,24 @@ def start_game(room_id: str, host_player_id: str):
         raise HTTPException(403, "Only host can start")
     if len(room.players) < 3:
         raise HTTPException(400, "Need at least 3 players")
+    if len(room.players) > 7:
+        raise HTTPException(400, "more than 7 players")
     if room.status != RoomStatus.waiting:
         raise HTTPException(400, "Game already started")
     try:
         game_state = _create_game_state(room.players)
         room.game_state = game_state
         room.status = RoomStatus.active
-        # 广播游戏开始
         asyncio.create_task(
             broadcast_to_room(
                 room_id,
                 {
                     "type": "game_started",
-                    "data": {"current_player": game_state.current_player_id},
+                    "data": room,
                 },
             )
         )
-        return Response()
+        return Response(data=room)
     except Exception as e:
         raise HTTPException(500, f"Game init failed: {e}")
 
@@ -369,9 +367,6 @@ def get_room(room_id: str):
     return Response(data=rooms[room_id])
 
 
-# ====== 游戏动作接口（添加广播）======
-
-
 @app.post("/room/action/draw")
 def draw_from_deck(room_id: str, player_id: str):
     room = _get_active_room(room_id)
@@ -391,6 +386,7 @@ def draw_from_deck(room_id: str, player_id: str):
     if game.players[player_id].money < cost:
         raise HTTPException(400, f"Need {cost} money")
 
+    # game.market_deck.remove(card)
     card = game.market_deck.pop()
     game.players[player_id].money -= cost
     game.players[player_id].hand.append(card)
@@ -411,7 +407,7 @@ def draw_from_deck(room_id: str, player_id: str):
             },
         )
     )
-    return Response(data={"drawn": card, "money_left": game.players[player_id].money})
+    return Response(data=room)
 
 
 @app.post("/room/action/take")
@@ -451,7 +447,7 @@ def take_from_market(room_id: str, player_id: str, card_index: int):
         )
     )
 
-    return Response(data={"taken": company, "coins_gained": coins})
+    return Response(data=room)
 
 
 @app.post("/room/action/play")
@@ -527,7 +523,7 @@ def play_card(
     }
     asyncio.create_task(broadcast_to_room(room_id, msg))
 
-    return Response()
+    return Response(data=room)
 
 
 @app.get("/")
@@ -538,4 +534,4 @@ def root():
 if __name__ == "__main__":
     from uvicorn import run
 
-    run(app="main:app", host="0.0.0.0", port=80, reload=True)
+    run(app="main:app", host="127.0.0.1", port=80)
