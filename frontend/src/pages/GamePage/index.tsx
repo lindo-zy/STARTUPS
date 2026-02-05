@@ -24,7 +24,14 @@ import { GiCardDraw } from "react-icons/gi";
 import { InvestmentGrid } from "./components/InvestmentGrid";
 import { COMPANY_COLORS, COMPANIES } from "../../constants/game";
 import CardItem from "./components/CardItem";
-import { drawFromDeck, playCard, takeFromMarket } from "../../services/api";
+import {
+  deleteRoom,
+  drawFromDeck,
+  leaveRoom,
+  playCard,
+  startGame,
+  takeFromMarket,
+} from "../../services/api";
 
 interface Player {
   id: string;
@@ -46,10 +53,102 @@ const GamePage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const { isConnected, connect, disconnect } = useSocket();
+  const { isConnected, connect, disconnect, socket } = useSocket();
   const toast = useToast();
 
   const roomId = location.state?.room_id || searchParams.get("room_id");
+  const type = location.state?.type || searchParams.get("type");
+  const playerId = location.state?.player_id || searchParams.get("player_id");
+
+  const [isWaiting, setIsWaiting] = React.useState(true);
+  const [joinedPlayers, setJoinedPlayers] = React.useState<Player[]>([
+    {
+      id: "p1",
+      name: "我",
+      coins: 10,
+      handCount: 3,
+      investments: {},
+      antitrustTokens: [],
+      isActive: false,
+    },
+  ]);
+
+  // 模拟好友加入（仅演示用，实际应通过 socket 监听）
+  useEffect(() => {
+    if (isWaiting) {
+      const timer = setTimeout(() => {
+        setJoinedPlayers((prev) => [
+          ...prev,
+          {
+            id: "p2",
+            name: "好友 A",
+            coins: 10,
+            handCount: 3,
+            investments: {},
+            antitrustTokens: [],
+            isActive: false,
+          },
+        ]);
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [isWaiting]);
+
+  // 监听 socket 消息更新玩家列表
+  useEffect(() => {
+    if (socket && isWaiting) {
+      const handleMessage = (event: MessageEvent) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === "player_joined") {
+            // 假设后端返回的是新加入的玩家信息或完整玩家列表
+            // 这里仅作示例，具体需根据后端协议调整
+            // setJoinedPlayers(data.players);
+          }
+        } catch (error) {
+          console.error("解析消息失败:", error);
+        }
+      };
+
+      socket.addEventListener("message", handleMessage);
+      return () => {
+        socket.removeEventListener("message", handleMessage);
+      };
+    }
+  }, [socket, isWaiting]);
+
+  const handleStartGame = async () => {
+    if (joinedPlayers.length < 2) {
+      toast({
+        title: "玩家不足",
+        description: "至少需要 2 人加入游戏",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+        position: "top",
+      });
+      return;
+    }
+    const res = await startGame({
+      room_id: roomId,
+      host_player_id: playerId,
+    });
+    if (res) {
+      setIsWaiting(false);
+      toast({
+        title: "游戏开始",
+        description: "祝你好运！",
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+        position: "top",
+      });
+    }
+    // TODO: 发送开始游戏指令
+    // if (socket && isConnected) {
+    //   socket.send(JSON.stringify({ action: "start_game", room_id: roomId }));
+    // }
+  };
 
   useEffect(() => {
     if (!roomId) {
@@ -111,6 +210,144 @@ const GamePage: React.FC = () => {
 
   const deckCount = 38;
 
+  if (isWaiting) {
+    return (
+      <Box
+        minH="100vh"
+        bg="gray.50"
+        display="flex"
+        alignItems="center"
+        justifyContent="center"
+      >
+        <VStack
+          spacing={8}
+          p={10}
+          bg="white"
+          borderRadius="2xl"
+          boxShadow="2xl"
+          minW="400px"
+          textAlign="center"
+        >
+          <VStack spacing={2}>
+            <Text fontSize="2xl" fontWeight="bold" color="gray.700">
+              等待游戏开启
+            </Text>
+            <Text color="gray.500">等待好友加入房间...</Text>
+          </VStack>
+
+          <Box
+            p={6}
+            bg="blue.50"
+            borderRadius="xl"
+            borderWidth={1}
+            borderColor="blue.100"
+            w="full"
+          >
+            <Text color="blue.600" fontSize="sm" fontWeight="bold" mb={1}>
+              房间号
+            </Text>
+            <Text
+              fontSize="4xl"
+              fontWeight="black"
+              color="blue.700"
+              letterSpacing="wider"
+              fontFamily="monospace"
+            >
+              {roomId}
+            </Text>
+          </Box>
+
+          {/* 已加入玩家列表 */}
+          <Box w="full">
+            <Text
+              fontSize="md"
+              fontWeight="bold"
+              color="gray.600"
+              mb={3}
+              textAlign="left"
+            >
+              已加入玩家 ({joinedPlayers.length}/7)
+            </Text>
+            <VStack spacing={3} align="stretch">
+              {joinedPlayers.map((player) => (
+                <Flex
+                  key={player.id}
+                  bg="gray.50"
+                  p={3}
+                  borderRadius="lg"
+                  align="center"
+                  justify="space-between"
+                  borderWidth={1}
+                  borderColor="gray.200"
+                >
+                  <HStack spacing={3}>
+                    <Icon as={FaGrinStars} color="blue.400" />
+                    <Text fontWeight="medium" color="gray.700">
+                      {player.name}
+                      {/* p1更换为 host_player_id */}
+                      {player.id === "p1" && type === "create" && (
+                        <Badge ml={2} colorScheme="green" variant="subtle">
+                          房主
+                        </Badge>
+                      )}
+                    </Text>
+                  </HStack>
+                </Flex>
+              ))}
+              {/* 占位符展示空位 */}
+              {Array.from({ length: 6 - joinedPlayers.length }).map((_, i) => (
+                <Flex
+                  key={`empty-${i}`}
+                  bg="transparent"
+                  p={3}
+                  borderRadius="lg"
+                  align="center"
+                  borderWidth={1}
+                  borderStyle="dashed"
+                  borderColor="gray.300"
+                >
+                  <Text color="gray.400" fontSize="sm" ml={2}>
+                    等待玩家加入...
+                  </Text>
+                </Flex>
+              ))}
+            </VStack>
+          </Box>
+
+          {type === "create" && (
+            <VStack w="full" spacing={4}>
+              <Button
+                size="lg"
+                colorScheme="blue"
+                w="full"
+                height="3.5rem"
+                fontSize="lg"
+                onClick={handleStartGame}
+                boxShadow="lg"
+                _hover={{ transform: "translateY(-2px)", boxShadow: "xl" }}
+                transition="all 0.2s"
+              >
+                开始游戏
+              </Button>
+
+              <Button
+                variant="ghost"
+                colorScheme="red"
+                size="sm"
+                onClick={async () => {
+                  await deleteRoom(roomId);
+                  navigate("/");
+                }}
+              >
+                取消并退出
+              </Button>
+            </VStack>
+          )}
+        </VStack>
+      </Box>
+    );
+  }
+
   return (
     <Box
       minH="100vh"
@@ -140,6 +377,10 @@ const GamePage: React.FC = () => {
             size="xs"
             colorScheme="red"
             leftIcon={<Icon as={FaSignOutAlt} />}
+            onClick={async () => {
+              await leaveRoom(roomId);
+              navigate("/");
+            }}
           >
             退出
           </Button>
