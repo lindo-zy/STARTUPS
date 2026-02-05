@@ -3,7 +3,7 @@ import apiClient from "./client";
 
 // 创建房间
 interface CreateRoomParams {
-  host_player_id: string;
+  host_player_name: string;
   max_players?: number;
 }
 
@@ -22,7 +22,7 @@ export const listRooms = async () => {
 // 加入房间
 interface JoinRoomParams {
   room_id: string;
-  player_id: string;
+  player_name: string;
 }
 
 export const joinRoom = async (params: JoinRoomParams) => {

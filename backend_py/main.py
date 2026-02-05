@@ -1,13 +1,14 @@
 import asyncio
+import json
 import random
-import uuid
 from enum import Enum
-from typing import Dict, List, Optional, Literal, Set
+from typing import Dict, List, Optional, Literal, Set, Any
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
+from pydantic.v1 import Field
 
-app = FastAPI(title="Startup Tycoon - Card Investment Game with WebSocket")
+app = FastAPI(title="Startups")
 
 # ====== 常量 ======
 COMPANIES = ["Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta"]
@@ -19,6 +20,12 @@ COMPANY_CARD_COUNTS = {
     "Epsilon": 9,
     "Zeta": 10,
 }
+
+
+class Response(BaseModel):
+    code: int = 200
+    message: str = "success"
+    data: Any = Field(default_factory=dict)
 
 
 # ====== 数据模型（同前）======
@@ -57,7 +64,7 @@ class RoomStatus(str, Enum):
 class Room(BaseModel):
     room_id: str
     host_player_id: str
-    max_players: int
+    max_players: int = 7
     players: List[str]
     status: RoomStatus
     game_state: Optional[GameState] = None
@@ -73,6 +80,7 @@ websocket_connections: Dict[str, Set[WebSocket]] = {}
 # ====== 广播工具函数 ======
 async def broadcast_to_room(room_id: str, message: dict):
     """向指定房间的所有 WebSocket 客户端广播消息"""
+    print(websocket_connections)
     if room_id not in websocket_connections:
         return
     dead_connections = set()
@@ -206,9 +214,13 @@ def _get_active_room(room_id: str) -> Room:
 
 
 # ====== WebSocket 路由 ======
-@app.websocket("/ws/{room_id}")
-async def websocket_endpoint(websocket: WebSocket, room_id: str):
+@app.websocket("/ws/{room_id}/{player_id}")
+async def websocket_endpoint(websocket: WebSocket, room_id: str, player_id: str):
     await websocket.accept()
+
+    if room_id not in rooms or player_id not in rooms[room_id].players:
+        await websocket.close(code=1008, reason="Player not in room")
+        return
 
     # 初始化连接池
     if room_id not in websocket_connections:
@@ -216,14 +228,15 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
     websocket_connections[room_id].add(websocket)
 
     try:
-        # 可选：发送当前游戏状态快照
         if room_id in rooms:
             room = rooms[room_id]
-            await websocket.send_json({"type": "room_state", "data": room.dict()})
+            await websocket.send_json({"type": "room_state", "data": room.model_dump()})
 
-        # 保持连接（可接收客户端消息，但本例只用于广播）
         while True:
-            await websocket.receive_text()  # 心跳或忽略
+            data = await websocket.receive_text()
+            message = json.loads(data)
+            print(message)
+
     except WebSocketDisconnect:
         pass
     finally:
@@ -238,36 +251,24 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
 
 
 @app.post("/room/create")
-def create_room(host_player_id: str, max_players: int = 6):
+def create_room(host_player_id: str):
     if not host_player_id.strip():
         raise HTTPException(400, "Player ID required")
-    if max_players < 3 or max_players > 7:
-        raise HTTPException(400, "Max players must be 3–7")
-    room_id = str(uuid.uuid4())[:8]
+    # room_id = str(uuid.uuid4())[:8]
+    room_id = "123456"
     room = Room(
         room_id=room_id,
         host_player_id=host_player_id,
-        max_players=max_players,
         players=[host_player_id],
         status=RoomStatus.waiting,
     )
     rooms[room_id] = room
-    # 广播房间创建
-    asyncio.create_task(
-        broadcast_to_room(
-            room_id,
-            {
-                "type": "room_created",
-                "data": {"room_id": room_id, "host": host_player_id},
-            },
-        )
-    )
-    return {"room_id": room_id, "message": "Room created"}
+    return Response(data={"room_id": room_id})
 
 
 @app.get("/room/list")
 def list_rooms():
-    return [
+    data = [
         {
             "room_id": r.room_id,
             "host": r.host_player_id,
@@ -278,9 +279,10 @@ def list_rooms():
         for r in rooms.values()
         if r.status != RoomStatus.finished
     ]
+    return Response(data=data)
 
 
-@app.post("/room/{room_id}/join")
+@app.post("/room/join")
 def join_room(room_id: str, player_id: str):
     if room_id not in rooms:
         raise HTTPException(404, "Room not found")
@@ -292,19 +294,10 @@ def join_room(room_id: str, player_id: str):
     if len(room.players) >= room.max_players:
         raise HTTPException(400, "Room is full")
     room.players.append(player_id)
-    asyncio.create_task(
-        broadcast_to_room(
-            room_id,
-            {
-                "type": "player_joined",
-                "data": {"player_id": player_id, "players": room.players},
-            },
-        )
-    )
-    return {"message": f"{player_id} joined"}
+    return Response(data=room)
 
 
-@app.post("/room/{room_id}/leave")
+@app.post("/room/leave")
 def leave_room(room_id: str, player_id: str):
     if room_id not in rooms:
         raise HTTPException(404, "Room not found")
@@ -318,20 +311,11 @@ def leave_room(room_id: str, player_id: str):
         room.host_player_id = room.players[0]
     if not room.players:
         del rooms[room_id]
-        return {"message": "Room deleted"}
-    asyncio.create_task(
-        broadcast_to_room(
-            room_id,
-            {
-                "type": "player_left",
-                "data": {"player_id": player_id, "players": room.players},
-            },
-        )
-    )
-    return {"message": f"{player_id} left"}
+        return Response()
+    return Response(data=room)
 
 
-@app.post("/room/{room_id}/start")
+@app.post("/room/start")
 def start_game(room_id: str, host_player_id: str):
     if room_id not in rooms:
         raise HTTPException(404, "Room not found")
@@ -340,28 +324,29 @@ def start_game(room_id: str, host_player_id: str):
         raise HTTPException(403, "Only host can start")
     if len(room.players) < 3:
         raise HTTPException(400, "Need at least 3 players")
+    if len(room.players) > 7:
+        raise HTTPException(400, "more than 7 players")
     if room.status != RoomStatus.waiting:
         raise HTTPException(400, "Game already started")
     try:
         game_state = _create_game_state(room.players)
         room.game_state = game_state
         room.status = RoomStatus.active
-        # 广播游戏开始
         asyncio.create_task(
             broadcast_to_room(
                 room_id,
                 {
                     "type": "game_started",
-                    "data": {"current_player": game_state.current_player_id},
+                    "data": room,
                 },
             )
         )
-        return {"message": "Game started"}
+        return Response(data=room)
     except Exception as e:
         raise HTTPException(500, f"Game init failed: {e}")
 
 
-@app.delete("/room/{room_id}")
+@app.delete("/room/delete")
 def delete_room(room_id: str, requester_id: str):
     if room_id not in rooms:
         raise HTTPException(404, "Room not found")
@@ -371,7 +356,7 @@ def delete_room(room_id: str, requester_id: str):
         asyncio.create_task(
             broadcast_to_room(room_id, {"type": "room_deleted", "data": {}})
         )
-        return {"message": "Room deleted"}
+        return Response()
     raise HTTPException(403, "Cannot delete active room")
 
 
@@ -379,13 +364,10 @@ def delete_room(room_id: str, requester_id: str):
 def get_room(room_id: str):
     if room_id not in rooms:
         raise HTTPException(404, "Room not found")
-    return rooms[room_id]
+    return Response(data=rooms[room_id])
 
 
-# ====== 游戏动作接口（添加广播）======
-
-
-@app.post("/room/{room_id}/action/draw_from_deck")
+@app.post("/room/action/draw")
 def draw_from_deck(room_id: str, player_id: str):
     room = _get_active_room(room_id)
     game = room.game_state
@@ -404,6 +386,7 @@ def draw_from_deck(room_id: str, player_id: str):
     if game.players[player_id].money < cost:
         raise HTTPException(400, f"Need {cost} money")
 
+    # game.market_deck.remove(card)
     card = game.market_deck.pop()
     game.players[player_id].money -= cost
     game.players[player_id].hand.append(card)
@@ -424,11 +407,10 @@ def draw_from_deck(room_id: str, player_id: str):
             },
         )
     )
+    return Response(data=room)
 
-    return {"drawn": card, "money_left": game.players[player_id].money}
 
-
-@app.post("/room/{room_id}/action/take_from_market")
+@app.post("/room/action/take")
 def take_from_market(room_id: str, player_id: str, card_index: int):
     room = _get_active_room(room_id)
     game = room.game_state
@@ -465,10 +447,10 @@ def take_from_market(room_id: str, player_id: str, card_index: int):
         )
     )
 
-    return {"taken": company, "coins_gained": coins}
+    return Response(data=room)
 
 
-@app.post("/room/{room_id}/action/play_card")
+@app.post("/room/action/play")
 def play_card(
     room_id: str,
     player_id: str,
@@ -541,15 +523,15 @@ def play_card(
     }
     asyncio.create_task(broadcast_to_room(room_id, msg))
 
-    return {"status": "success"}
+    return Response(data=room)
 
 
 @app.get("/")
 def root():
-    return {"message": "Startup Tycoon with WebSocket Broadcasting"}
+    return "服务启动成功"
 
 
 if __name__ == "__main__":
     from uvicorn import run
 
-    run(app="main:app", port=8000, reload=True)
+    run(app="main:app", host="127.0.0.1", port=80)

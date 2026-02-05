@@ -71,3 +71,57 @@ export default defineConfig([
   },
 ])
 ```
+
+```js
+const room_id = "123456";
+const player_id = "Alice";
+
+// 1. 创建 WebSocket 连接（在 join 房间成功后）
+const ws = new WebSocket(`ws://your-domain/ws/${room_id}/${player_id}`);
+
+// 2. 监听消息
+ws.onmessage = function(event) {
+    // event.data 是字符串！需要解析
+    let message;
+    try {
+        message = JSON.parse(event.data); // 👈 关键：解析 JSON
+    } catch (e) {
+        console.error("Invalid JSON:", event.data);
+        return;
+    }
+
+    // 3. 根据 type 分发处理
+    switch (message.type) {
+        case "room_state":
+            console.log("当前房间状态:", message.data);
+            updateRoomUI(message.data);
+            break;
+
+        case "game_started":
+            console.log("游戏开始！完整状态:", message.data);
+            startGame(message.data.game_state);
+            break;
+
+        case "action":
+            console.log("玩家操作:", message.data);
+            applyAction(message.data);
+            break;
+
+        case "game_over":
+            console.log("游戏结束，胜者:", message.data.winner);
+            showGameOver(message.data);
+            break;
+
+        default:
+            console.warn("未知消息类型:", message.type);
+    }
+};
+
+ws.onerror = (err) => {
+    console.error("WebSocket 错误:", err);
+};
+
+ws.onclose = () => {
+    console.log("连接关闭");
+};
+```

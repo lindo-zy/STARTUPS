@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, {useEffect, useState} from "react";
 import {
   Box,
   Button,
@@ -11,7 +11,7 @@ import {
   Text,
 } from "@chakra-ui/react";
 import { v4 as uuidv4 } from "uuid";
-import { createRoom } from "../../services/api";
+import {createRoom, joinRoom} from "../../services/api";
 import { useNavigate } from "react-router-dom";
 
 const GameLobby: React.FC = () => {
@@ -25,7 +25,14 @@ const GameLobby: React.FC = () => {
   const bgColor = useColorModeValue("gray.50", "gray.900");
   const cardBg = useColorModeValue("white", "gray.800");
   const textColor = useColorModeValue("gray.800", "white");
-
+  const [playerName, setNickname] = useState('');
+  const [roomId, setRoomId] = useState('');
+  const handleInputChange = (e) => {
+    setNickname(e.target.value);
+  };
+  const handleRoomInputChange = (e) => {
+    setRoomId(e.target.value);
+  };
   return (
     <Box minH="100vh" p={4} bg={bgColor} w="full">
       <Center h="100vh">
@@ -99,7 +106,8 @@ const GameLobby: React.FC = () => {
                     if (!playerId) {
                       return;
                     }
-                    const res = await createRoom({ host_player_id: playerId });
+
+                    const res = await createRoom({ host_player_name:playerName});
                     if (res) {
                       navigate(`/game`, {
                         state: { room_id: res.room_id, type: "create" },
@@ -110,7 +118,10 @@ const GameLobby: React.FC = () => {
                   创建房间
                 </Button>
               </Box>
-
+              <Input placeholder='用户昵称' size='lg'
+              value={playerName}
+                     onChange={handleInputChange}
+              />
               {/* 加入房间区域 */}
               <Box>
                 <HStack spacing={3}>
@@ -124,6 +135,8 @@ const GameLobby: React.FC = () => {
                     _focus={{ boxShadow: "0 0 0 3px rgba(59, 130, 246, 0.3)" }}
                     bg={useColorModeValue("white", "gray.700")}
                     borderColor={useColorModeValue("gray.200", "gray.600")}
+                    value={roomId}
+                    onChange={handleRoomInputChange}
                   />
                   <Button
                     colorScheme="green"
@@ -137,6 +150,21 @@ const GameLobby: React.FC = () => {
                     _active={{ bg: "green.700" }}
                     _focus={{ boxShadow: "0 0 0 3px rgba(16, 185, 129, 0.5)" }}
                     transition="all 0.3s ease"
+
+                    onClick={async () => {
+                      const playerId = localStorage.getItem("playerId");
+                      if (!playerId) {
+                        return;
+                      }
+
+                      const res = await joinRoom({ room_id:roomId,player_name:playerName});
+                      if (res) {
+                        navigate(`/game`, {
+                          state: { room_id: res.room_id },
+                        });
+                      }
+                    }}
+
                   >
                     加入
                   </Button>
