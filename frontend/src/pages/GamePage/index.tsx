@@ -24,10 +24,7 @@ import { GiCardDraw } from "react-icons/gi";
 import { InvestmentGrid } from "./components/InvestmentGrid";
 import { COMPANY_COLORS, COMPANIES } from "../../constants/game";
 import CardItem from "./components/CardItem";
-
-// --- 模拟数据类型与辅助函数 ---
-
-// const getCardImage = (company: number) => `/img/p${company}.jpg`;
+import { drawFromDeck, playCard, takeFromMarket } from "../../services/api";
 
 interface Player {
   id: string;
@@ -60,8 +57,14 @@ const GamePage: React.FC = () => {
       return;
     }
     // 连接逻辑在真实后端集成时开启
+    const playerId = localStorage.getItem("playerId");
+    if (!playerId) {
+      navigate("/");
+      return;
+    }
+    // connect(roomId, playerId);
     return () => disconnect();
-  }, [roomId, navigate, connect, disconnect]);
+  }, [roomId]);
 
   useEffect(() => {
     if (isConnected) {
@@ -200,7 +203,7 @@ const GamePage: React.FC = () => {
                 boxShadow="xl"
                 position="relative"
                 cursor="pointer"
-                _hover={{ transform: "translateY(-5px)" }}
+                // _hover={{ transform: "translateY(-5px)" }}
                 transition="all 0.2s"
               >
                 <Center h="full">
@@ -224,7 +227,14 @@ const GamePage: React.FC = () => {
                   {deckCount}
                 </Badge>
               </Box>
-              <Button size="sm" colorScheme="blue" variant="outline">
+              <Button
+                size="sm"
+                colorScheme="blue"
+                variant="outline"
+                onClick={async () => {
+                  await drawFromDeck({ room_id: roomId, player_id: me.id });
+                }}
+              >
                 抽牌 (-1 <Icon as={FaCoins} ml={1} />)
               </Button>
             </VStack>
@@ -252,7 +262,7 @@ const GamePage: React.FC = () => {
                   </Text>
                 </VStack>
               )}
-              {market.map((card) => (
+              {market.map((card, index) => (
                 <VStack key={card.id} position="relative">
                   <Tooltip label={`点击拿取 (获得 ${card.coins} 金币)`}>
                     <Box
@@ -260,6 +270,13 @@ const GamePage: React.FC = () => {
                       _hover={{ transform: "scale(1.05)", boxShadow: "xl" }}
                       transition="all 0.2s"
                       position="relative"
+                      onClick={async () => {
+                        await takeFromMarket({
+                          room_id: roomId,
+                          player_id: me.id,
+                          card_index: index,
+                        });
+                      }}
                     >
                       <CardItem company={card.company} size={10} />
                       {card.coins > 0 && (
@@ -391,12 +408,6 @@ const GamePage: React.FC = () => {
                   }}
                 >
                   <CardItem company={companyId} size={12} />
-                  {/* <Image
-                    src={getCardImage(companyId)}
-                    w="full"
-                    h="full"
-                    objectFit="cover"
-                  /> */}
                   {/* 悬停显示的操作层 */}
                   <Flex
                     position="absolute"
@@ -410,11 +421,37 @@ const GamePage: React.FC = () => {
                     gap={2}
                     transition="opacity 0.2s"
                   >
-                    <Button size="sm" colorScheme="green" w="24" shadow="md">
+                    <Button
+                      size="sm"
+                      colorScheme="green"
+                      w="24"
+                      shadow="md"
+                      onClick={async () => {
+                        await playCard({
+                          room_id: roomId,
+                          player_id: me.id,
+                          card_company: companyId.toString(),
+                          action: "invest",
+                        });
+                      }}
+                    >
                       持股
                     </Button>
-                    <Button size="sm" colorScheme="orange" w="24" shadow="md">
-                      丢弃
+                    <Button
+                      size="sm"
+                      colorScheme="orange"
+                      w="24"
+                      shadow="md"
+                      onClick={async () => {
+                        await playCard({
+                          room_id: roomId,
+                          player_id: me.id,
+                          card_company: companyId.toString(),
+                          action: "to_market",
+                        });
+                      }}
+                    >
+                      上架
                     </Button>
                   </Flex>
                 </Box>

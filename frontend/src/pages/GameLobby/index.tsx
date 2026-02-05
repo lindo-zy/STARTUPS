@@ -102,7 +102,7 @@ const GameLobby: React.FC = () => {
                     const res = await createRoom({ host_player_id: playerId });
                     if (res) {
                       navigate(`/game`, {
-                        state: { room_id: res.room_id },
+                        state: { room_id: res.room_id, type: "create" },
                       });
                     }
                   }}
