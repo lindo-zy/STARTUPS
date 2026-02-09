@@ -214,14 +214,14 @@ def _get_active_room(room_id: str) -> Room:
 
 
 # ====== WebSocket 路由 ======
-@app.websocket("/ws/{room_id}/{player_id}")
-async def websocket_endpoint(websocket: WebSocket, room_id: str, player_id: str):
+@app.websocket("/ws/{room_id}/{player_name}")
+async def websocket_endpoint(websocket: WebSocket, room_id: str, player_name: str):
     await websocket.accept()
-
-    if room_id not in rooms or player_id not in rooms[room_id].players:
+    print(rooms)
+    if room_id not in rooms or player_name not in rooms[room_id].players:
         await websocket.close(code=1008, reason="Player not in room")
         return
-
+    print(f"当前玩家:{player_name}")
     # 初始化连接池
     if room_id not in websocket_connections:
         websocket_connections[room_id] = set()
