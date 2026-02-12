@@ -214,14 +214,14 @@ def _get_active_room(room_id: str) -> Room:
 
 
 # ====== WebSocket 路由 ======
-@app.websocket("/ws/{room_id}/{player_id}")
-async def websocket_endpoint(websocket: WebSocket, room_id: str, player_id: str):
+@app.websocket("/ws/{room_id}/{player_name}")
+async def websocket_endpoint(websocket: WebSocket, room_id: str, player_name: str):
     await websocket.accept()
-
-    if room_id not in rooms or player_id not in rooms[room_id].players:
+    print(rooms)
+    if room_id not in rooms or player_name not in rooms[room_id].players:
         await websocket.close(code=1008, reason="Player not in room")
         return
-
+    print(f"当前玩家:{player_name}")
     # 初始化连接池
     if room_id not in websocket_connections:
         websocket_connections[room_id] = set()
@@ -251,15 +251,15 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, player_id: str)
 
 
 @app.post("/room/create")
-def create_room(host_player_id: str):
-    if not host_player_id.strip():
+def create_room(host_player_name: str):
+    if not host_player_name.strip():
         raise HTTPException(400, "Player ID required")
     # room_id = str(uuid.uuid4())[:8]
     room_id = "123456"
     room = Room(
         room_id=room_id,
-        host_player_id=host_player_id,
-        players=[host_player_id],
+        host_player_id=host_player_name,
+        players=[host_player_name],
         status=RoomStatus.waiting,
     )
     rooms[room_id] = room
@@ -283,17 +283,17 @@ def list_rooms():
 
 
 @app.post("/room/join")
-def join_room(room_id: str, player_id: str):
+def join_room(room_id: str, player_name: str):
     if room_id not in rooms:
         raise HTTPException(404, "Room not found")
     room = rooms[room_id]
     if room.status != RoomStatus.waiting:
         raise HTTPException(400, "Cannot join: game already started")
-    if player_id in room.players:
+    if player_name in room.players:
         raise HTTPException(400, "Already in room")
     if len(room.players) >= room.max_players:
         raise HTTPException(400, "Room is full")
-    room.players.append(player_id)
+    room.players.append(player_name)
     return Response(data=room)
 
 
@@ -534,4 +534,4 @@ def root():
 if __name__ == "__main__":
     from uvicorn import run
 
-    run(app="main:app", host="127.0.0.1", port=80)
+    run(app="main:app", host="127.0.0.1", port=8080,reload=True)

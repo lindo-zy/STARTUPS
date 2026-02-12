@@ -5,7 +5,7 @@ import websockets
 
 
 async def interactive_client(client_id: str):
-    uri = f"ws://localhost/ws/{client_id}"
+    uri = f"ws://localhost:8080/ws/{client_id}/你好"
     try:
         async with websockets.connect(uri) as websocket:
             print(
