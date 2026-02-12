@@ -4,7 +4,7 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 interface SocketContextType {
   socket: WebSocket | null;
   isConnected: boolean;
-  connect: (roomId: string, playerId: string) => void;
+  connect: (roomId: string, playerName: string) => void;
   disconnect: () => void;
 }
 
@@ -34,10 +34,16 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     }
 
     // 注意：原生 WebSocket 使用 ws:// 或 wss:// 协议
-    const SOCKET_URL = `ws://47.108.74.28:80/ws/${roomId}/${playerId}`;
+    const SOCKET_URL = `ws://127.0.0.1:8080/ws/${roomId}/${playerId}`;
 
     console.log("正在连接 WebSocket:", SOCKET_URL);
     const newSocket = new WebSocket(SOCKET_URL);
+
+    newSocket.onmessage=(event)=>{
+      const data = JSON.parse(event.data);
+      console.log("📥 收到服务器消息:", data);
+    };
+
 
     newSocket.onopen = () => {
       console.log("WebSocket 已连接");

@@ -2,6 +2,7 @@ import React, { Suspense } from "react";
 import { BrowserRouter as Router, useRoutes } from "react-router-dom";
 
 import routes from "./config/routes";
+import {SocketProvider} from "./context/SocketContext.tsx";
 
 const RouteApp: React.FC = () => {
   const element = useRoutes(routes);
@@ -10,6 +11,7 @@ const RouteApp: React.FC = () => {
 
 function App() {
   return (
+      <SocketProvider>
     <Router>
       <Suspense
         fallback={
@@ -21,6 +23,7 @@ function App() {
         <RouteApp />
       </Suspense>
     </Router>
+      </SocketProvider>
   );
 }
 

@@ -335,8 +335,8 @@ const GamePage: React.FC = () => {
                 colorScheme="red"
                 size="sm"
                 onClick={async () => {
-                  await deleteRoom(roomId);
                   navigate("/");
+                  await deleteRoom(roomId);
                 }}
               >
                 取消并退出
