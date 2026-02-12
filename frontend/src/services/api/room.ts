@@ -46,7 +46,7 @@ export const leaveRoom = async (params: LeaveRoomParams) => {
 // 开始游戏
 interface StartGameParams {
   room_id: string;
-  host_player_id: string;
+  host_player_name: string;
 }
 
 export const startGame = async (params: StartGameParams) => {

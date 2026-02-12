@@ -17,7 +17,7 @@ import {useSocket} from "../../context/SocketContext.tsx";
 
 const GameLobby: React.FC = () => {
   const navigate = useNavigate();
-  const wsRef=useRef(null)
+  const { isConnected, connect, disconnect, socket } = useSocket();
 
   useEffect(() => {
     if (!localStorage.getItem("playerId")) {
@@ -30,7 +30,6 @@ const GameLobby: React.FC = () => {
   const textColor = useColorModeValue("gray.800", "white");
   const [playerName, setNickname] = useState("");
   const [roomId, setRoomId] = useState("");
-  const { isConnected, connect, disconnect, socket } = useSocket();
   const handleInputChange = (e) => {
     setNickname(e.target.value);
   };
@@ -106,24 +105,16 @@ const GameLobby: React.FC = () => {
                   _focus={{ boxShadow: "0 0 0 3px rgba(59, 130, 246, 0.5)" }}
                   transition="all 0.3s ease"
                   onClick={async () => {
-                    // const playerId = localStorage.getItem("playerId");
-                    // navigate(`/game`, {
-                    //   state: { room_id: "123456", type: "create" },
-                    // });
-                    // return;
-                    // if (!playerId) {
-                    //   return;
-                    // }
-
                     const res = await createRoom({
                       host_player_name: playerName,
                     });
                     if (res) {
+                      //创建Websocket
+                      connect(res.room_id,playerName);
                       navigate(`/game`, {
                         state: { room_id: res.room_id, type: "create" },
                       });
-                      //创建Websocket
-                      connect(res.room_id,playerName);
+
                     }
                   }}
                 >
@@ -178,6 +169,7 @@ const GameLobby: React.FC = () => {
                         player_name: playerName,
                       });
                       if (res) {
+                        connect(res.room_id,playerName);
                         navigate(`/game`, {
                           state: { room_id: res.room_id },
                         });

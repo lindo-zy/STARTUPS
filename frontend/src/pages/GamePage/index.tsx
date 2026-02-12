@@ -58,7 +58,7 @@ const GamePage: React.FC = () => {
 
   const roomId = location.state?.room_id || searchParams.get("room_id");
   const type = location.state?.type || searchParams.get("type");
-  const playerId = location.state?.player_id || searchParams.get("player_id");
+  const playerName = location.state?.player_id || searchParams.get("player_name");
 
   const [isWaiting, setIsWaiting] = React.useState(true);
   const [joinedPlayers, setJoinedPlayers] = React.useState<Player[]>([
@@ -131,7 +131,7 @@ const GamePage: React.FC = () => {
     }
     const res = await startGame({
       room_id: roomId,
-      host_player_id: playerId,
+      host_player_name: playerName,
     });
     if (res) {
       setIsWaiting(false);

@@ -11,7 +11,7 @@ const RouteApp: React.FC = () => {
 
 function App() {
   return (
-      <SocketProvider>
+  <SocketProvider>
     <Router>
       <Suspense
         fallback={
@@ -23,7 +23,7 @@ function App() {
         <RouteApp />
       </Suspense>
     </Router>
-      </SocketProvider>
+  </SocketProvider>
   );
 }
 
