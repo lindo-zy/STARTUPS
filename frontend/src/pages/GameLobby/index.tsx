@@ -1,4 +1,4 @@
-import React, {useState} from "react";
+import React, {useEffect, useState} from "react";
 import {
   Box,
   Button,
@@ -8,11 +8,12 @@ import {
   HStack,
   Center,
   useColorModeValue,
-  Text,
+  Text, useToast,
 } from "@chakra-ui/react";
 import { createRoom, joinRoom } from "../../services/api";
 import { useNavigate } from "react-router-dom";
 import {useSocket} from "../../context/SocketContext.tsx";
+import {resolveStyleConfig} from "@chakra-ui/icons";
 
 const GameLobby: React.FC = () => {
   const navigate = useNavigate();
@@ -21,10 +22,28 @@ const GameLobby: React.FC = () => {
   const bgColor = useColorModeValue("gray.50", "gray.900");
   const cardBg = useColorModeValue("white", "gray.800");
   const textColor = useColorModeValue("gray.800", "white");
-  const [playerName, setNickname] = useState("");
+  const [playerName, setPlayerName] = useState(() => {
+    const saved = localStorage.getItem("playerName");
+    return saved || "";
+  });
   const [roomId, setRoomId] = useState("");
+  const toast = useToast();
+  useEffect(() => {
+    if (playerName) {
+      localStorage.setItem("playerName", playerName);
+    } else {
+      localStorage.removeItem("playerName");
+    }
+    if(roomId){
+      localStorage.setItem("roomId", roomId);
+    }else{
+      localStorage.removeItem("roomId");
+    }
+
+  }, [playerName,roomId]);
+
   const handleInputChange = (e) => {
-    setNickname(e.target.value);
+    setPlayerName(e.target.value);
   };
   const handleRoomInputChange = (e) => {
     setRoomId(e.target.value);
@@ -76,7 +95,7 @@ const GameLobby: React.FC = () => {
               fontWeight="bold"
               color={textColor}
             >
-              {/*游戏大厅*/}
+              游戏大厅
             </Heading>
 
             <VStack spacing={6} align="stretch">
@@ -103,6 +122,7 @@ const GameLobby: React.FC = () => {
                     if (res) {
                       //创建Websocket
                       connect(res.room_id,playerName);
+                      setRoomId(res.room_id)
                       navigate(`/game`, {
                         state: { room_id: res.room_id, type: "create" },
                       });
@@ -147,15 +167,25 @@ const GameLobby: React.FC = () => {
                     _focus={{ boxShadow: "0 0 0 3px rgba(16, 185, 129, 0.5)" }}
                     transition="all 0.3s ease"
                     onClick={async () => {
-                      const res = await joinRoom({
-                        room_id: roomId,
-                        player_name: playerName,
-                      });
-                      if (res) {
-                        connect(res.room_id,playerName);
+                      try {
+                        const res = await joinRoom({
+                          room_id: roomId,
+                          player_name: playerName,
+                        });
+                        connect(res.room_id, playerName);
                         navigate(`/game`, {
                           state: { room_id: res.room_id },
                         });
+                      } catch (error) {
+                        if (error.response) {
+                          console.log('Status:', error.response.data); // axios 风格
+                          toast({
+                            title: JSON.stringify(error.response.data),
+                            status: "error",
+                            duration: 2000,
+                            position: "top",
+                          });
+                        }
                       }
                     }}
                   >
@@ -171,7 +201,7 @@ const GameLobby: React.FC = () => {
       {/* 页脚 */}
       <Box mt={8} textAlign="center">
         <Text fontSize="sm" color="gray.500">
-          {/*© 2026 游戏平台 | 享受游戏时光*/}
+          © 2026 游戏平台 | 享受游戏时光
         </Text>
       </Box>
     </Box>

@@ -1,0 +1,146 @@
+{
+  "room_id": "123456",
+  "host_player_name": "aa",
+  "max_players": 7,
+  "players": [
+    "aa",
+    "aa1",
+    "bb"
+  ],
+  "status": "active",
+  "game_state": {
+    "game_id": "game_aa",
+    "players": {
+      "aa": {
+        "player_id": "aa",
+        "hand": [
+          "Zeta",
+          "Gamma",
+          "Epsilon"
+        ],
+        "investments": {
+          "Alpha": 0,
+          "Beta": 0,
+          "Gamma": 0,
+          "Delta": 0,
+          "Epsilon": 0,
+          "Zeta": 0
+        },
+        "money": 10,
+        "score": 0,
+        "has_antimonopoly": {
+          "Alpha": false,
+          "Beta": false,
+          "Gamma": false,
+          "Delta": false,
+          "Epsilon": false,
+          "Zeta": false
+        }
+      },
+      "aa1": {
+        "player_id": "aa1",
+        "hand": [
+          "Zeta",
+          "Gamma",
+          "Beta"
+        ],
+        "investments": {
+          "Alpha": 0,
+          "Beta": 0,
+          "Gamma": 0,
+          "Delta": 0,
+          "Epsilon": 0,
+          "Zeta": 0
+        },
+        "money": 10,
+        "score": 0,
+        "has_antimonopoly": {
+          "Alpha": false,
+          "Beta": false,
+          "Gamma": false,
+          "Delta": false,
+          "Epsilon": false,
+          "Zeta": false
+        }
+      },
+      "bb": {
+        "player_id": "bb",
+        "hand": [
+          "Zeta",
+          "Alpha",
+          "Alpha"
+        ],
+        "investments": {
+          "Alpha": 0,
+          "Beta": 0,
+          "Gamma": 0,
+          "Delta": 0,
+          "Epsilon": 0,
+          "Zeta": 0
+        },
+        "money": 10,
+        "score": 0,
+        "has_antimonopoly": {
+          "Alpha": false,
+          "Beta": false,
+          "Gamma": false,
+          "Delta": false,
+          "Epsilon": false,
+          "Zeta": false
+        }
+      }
+    },
+    "market_deck": [
+      "Zeta",
+      "Delta",
+      "Delta",
+      "Beta",
+      "Epsilon",
+      "Epsilon",
+      "Gamma",
+      "Zeta",
+      "Epsilon",
+      "Beta",
+      "Zeta",
+      "Delta",
+      "Gamma",
+      "Delta",
+      "Zeta",
+      "Zeta",
+      "Zeta",
+      "Delta",
+      "Zeta",
+      "Beta",
+      "Epsilon",
+      "Epsilon",
+      "Alpha",
+      "Gamma",
+      "Gamma",
+      "Beta",
+      "Beta",
+      "Delta",
+      "Delta",
+      "Gamma",
+      "Alpha"
+    ],
+    "market_display": [],
+    "removed_cards": [
+      "Epsilon",
+      "Delta",
+      "Epsilon",
+      "Alpha",
+      "Epsilon"
+    ],
+    "current_player_id": "aa",
+    "round_number": 1,
+    "status": "active",
+    "antimonopoly_owner": {
+      "Alpha": null,
+      "Beta": null,
+      "Gamma": null,
+      "Delta": null,
+      "Epsilon": null,
+      "Zeta": null
+    }
+  }
+}

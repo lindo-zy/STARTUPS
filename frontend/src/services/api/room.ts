@@ -34,7 +34,7 @@ export const joinRoom = async (params: JoinRoomParams) => {
 // 离开房间
 interface LeaveRoomParams {
   room_id: string;
-  player_id: string;
+  player_name: string;
 }
 
 export const leaveRoom = async (params: LeaveRoomParams) => {

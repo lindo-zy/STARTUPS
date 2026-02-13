@@ -25,7 +25,6 @@ import { InvestmentGrid } from "./components/InvestmentGrid";
 import { COMPANY_COLORS, COMPANIES } from "../../constants/game";
 import CardItem from "./components/CardItem";
 import {
-  deleteRoom,
   drawFromDeck,
   leaveRoom,
   playCard,
@@ -34,6 +33,7 @@ import {
 } from "../../services/api";
 
 interface Player {
+  id:number;
   name: string;
 }
 
@@ -47,46 +47,53 @@ const GamePage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const { isConnected, socket } = useSocket();
+  const { isConnected, socket,disconnect } = useSocket();
   const toast = useToast();
 
-  const roomId = location.state?.room_id || searchParams.get("room_id");
+  const roomId = localStorage.getItem("roomId");
   const type = location.state?.type || searchParams.get("type");
-  const playerName = location.state?.player_id || searchParams.get("player_name");
+  const playerName = localStorage.getItem("playerName");
+  const [meId, setMeId] = React.useState(-1);
 
   const [isWaiting, setIsWaiting] = React.useState(true);
-  const [joinedPlayers, setJoinedPlayers] = React.useState<Player[]>([
-    {
-      name: playerName
-    },
-  ]);
+  const [joinedPlayers, setJoinedPlayers] = React.useState<Player[]>([]);
 
-  // 好友加入（仅演示用，实际应通过 socket 监听）
-  useEffect(() => {
-    if (isWaiting) {
-      const timer = setTimeout(() => {
-        setJoinedPlayers((prev) => [
-          ...prev,
-          {
-            name: "好友A",
-          },
-        ]);
-      }, 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [isWaiting]);
+  // 在实际应用中，这部分数据来自 socket onmessage
+  const opponents: Player[] = Array(6)
+      .fill(null)
+      .map((_, i) => ({
+        id: `p${i + 2}`,
+        name: `玩家 ${i + 2}`,
+        coins: 10,
+        handCount: 3,
+        investments: { 5: i === 0 ? 2 : 0, 10: i === 1 ? 3 : 0 },
+        antitrustTokens: i === 0 ? [5] : i === 1 ? [10] : [],
+        isActive: i === 0,
+      }));
 
   // 监听 socket 消息更新玩家列表
   useEffect(() => {
     if (socket && isWaiting) {
       const handleMessage = (event: MessageEvent) => {
         try {
-          const data = JSON.parse(event.data);
-          if (data.type === "player_joined") {
-            // 假设后端返回的是新加入的玩家信息或完整玩家列表
-            // 这里仅作示例，具体需根据后端协议调整
-            // setJoinedPlayers(data.players);
+          const data = JSON.parse(event.data).data;
+          const players=data.players;
+          const playerArray=[]
+          for (let i = 0; i < players.length; i++) {
+              playerArray.push({id:i,name:players[i]});
+              //设置当前游戏玩家
+              if(playerName===players[i]){
+                setMeId(i);
+              }
           }
+          setJoinedPlayers(playerArray);
+          toast({
+                  title: "已加入"+players.length+"位玩家",
+                  status: "success",
+                  duration: 2000,
+                  position: "top",
+                });
+
         } catch (error) {
           console.error("解析消息失败:", error);
         }
@@ -97,7 +104,7 @@ const GamePage: React.FC = () => {
         socket.removeEventListener("message", handleMessage);
       };
     }
-  }, [socket, isWaiting]);
+  }, [socket, isWaiting, toast]);
 
   const handleStartGame = async () => {
     if (joinedPlayers.length < 2) {
@@ -126,34 +133,15 @@ const GamePage: React.FC = () => {
         position: "top",
       });
       //todo 此处获取全部玩家初始状态
+      console.log(res);
+
     }
   };
 
-  useEffect(() => {
-    if (isConnected) {
-      toast({
-        title: "加入成功",
-        status: "success",
-        duration: 2000,
-        position: "top",
-      });
-    }
-  }, [isConnected, toast]);
 
-  // 在实际应用中，这部分数据来自 socket onmessage
-  const opponents: Player[] = Array(6)
-    .fill(null)
-    .map((_, i) => ({
-      id: `p${i + 2}`,
-      name: `玩家 ${i + 2}`,
-      coins: 10,
-      handCount: 3,
-      investments: { 5: i === 0 ? 2 : 0, 10: i === 1 ? 3 : 0 },
-      antitrustTokens: i === 0 ? [5] : i === 1 ? [10] : [],
-      isActive: i === 0,
-    }));
 
   const me: Player = {
+    id:meId,
     name: playerName
   };
 
@@ -241,11 +229,14 @@ const GamePage: React.FC = () => {
                     <Icon as={FaGrinStars} color="blue.400" />
                     <Text fontWeight="medium" color="gray.700">
                       {player.name}
-                      {/* p1更换为 host_player_id */}
-                      {player.id === "p1" && type === "create" && (
+                      {player.id === 0 ? (
                         <Badge ml={2} colorScheme="green" variant="subtle">
                           房主
                         </Badge>
+                      ):player.id === meId&&(
+                          <Badge ml={2} colorScheme="green" variant="subtle">
+                            我
+                          </Badge>
                       )}
                     </Text>
                   </HStack>
@@ -286,20 +277,22 @@ const GamePage: React.FC = () => {
               >
                 开始游戏
               </Button>
-
-              <Button
-                variant="ghost"
-                colorScheme="red"
-                size="sm"
-                onClick={async () => {
-                  navigate("/");
-                  await deleteRoom(roomId);
-                }}
-              >
-                取消并退出
-              </Button>
             </VStack>
           )}
+          <Button
+              variant="ghost"
+              colorScheme="red"
+              size="sm"
+              onClick={async () => {
+                await leaveRoom({
+                  room_id: roomId,
+                  player_name: playerName,});
+                disconnect()
+                navigate("/");
+              }}
+          >
+            取消并退出
+          </Button>
         </VStack>
       </Box>
     );
@@ -430,7 +423,7 @@ const GamePage: React.FC = () => {
                 colorScheme="blue"
                 variant="outline"
                 onClick={async () => {
-                  await drawFromDeck({ room_id: roomId, player_id: me.id });
+                  await drawFromDeck({ room_id: roomId, player_name: me.id });
                 }}
               >
                 抽牌 (-1 <Icon as={FaCoins} ml={1} />)
@@ -471,7 +464,7 @@ const GamePage: React.FC = () => {
                       onClick={async () => {
                         await takeFromMarket({
                           room_id: roomId,
-                          player_id: me.id,
+                          player_name: me.id,
                           card_index: index,
                         });
                       }}
@@ -627,7 +620,7 @@ const GamePage: React.FC = () => {
                       onClick={async () => {
                         await playCard({
                           room_id: roomId,
-                          player_id: me.id,
+                          player_name: me.id,
                           card_company: companyId.toString(),
                           action: "invest",
                         });
@@ -643,7 +636,7 @@ const GamePage: React.FC = () => {
                       onClick={async () => {
                         await playCard({
                           room_id: roomId,
-                          player_id: me.id,
+                          player_name: me.id,
                           card_company: companyId.toString(),
                           action: "to_market",
                         });
