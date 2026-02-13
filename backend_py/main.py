@@ -224,20 +224,19 @@ def _get_active_room(room_id: str) -> Room:
 @app.websocket("/{room_id}/{player_name}")
 async def websocket_endpoint(websocket: WebSocket, room_id: str, player_name: str):
     await websocket.accept()
-    print(rooms)
     if room_id not in rooms or player_name not in rooms[room_id].players:
         await websocket.close(code=1008, reason="Player not in room")
         return
-    print(f"当前玩家:{player_name}")
     # 初始化连接池
     if room_id not in websocket_connections:
         websocket_connections[room_id] = set()
     websocket_connections[room_id].add(websocket)
 
+
     try:
         if room_id in rooms:
             room = rooms[room_id]
-            await websocket.send_json({"type": "room_state", "data": room.model_dump()})
+            await asyncio.create_task(broadcast_to_room(room_id, {"type": "room_state", "data": room.model_dump()}))
 
         while True:
             data = await websocket.receive_text()
@@ -290,44 +289,44 @@ def list_rooms():
 
 
 @app.post("/room/join")
-def join_room(room_id: str, player_name: str):
+async def join_room(room_id: str, player_name: str):
     if room_id not in rooms:
-        raise HTTPException(404, "Room not found")
+        raise HTTPException(404, "游戏房间不存在!")
     room = rooms[room_id]
     if room.status != RoomStatus.waiting:
-        raise HTTPException(400, "Cannot join: game already started")
+        raise HTTPException(400, "无法加入，游戏已经开始!")
     if player_name in room.players:
-        raise HTTPException(400, "Already in room")
+        raise HTTPException(400, f"{player_name},已经在房间！请换个昵称!")
     if len(room.players) >= room.max_players:
-        raise HTTPException(400, "Room is full")
+        raise HTTPException(400, "房间已满!")
     room.players.append(player_name)
     return Response(data=room)
 
 
 @app.post("/room/leave")
-def leave_room(room_id: str, player_id: str):
+def leave_room(room_id: str, player_name: str):
     if room_id not in rooms:
         raise HTTPException(404, "Room not found")
     room = rooms[room_id]
-    if player_id not in room.players:
+    if player_name not in room.players:
         raise HTTPException(400, "Not in room")
     if room.status != RoomStatus.waiting:
         raise HTTPException(400, "Cannot leave after game started")
-    room.players.remove(player_id)
-    if player_id == room.host_player_name and room.players:
+    room.players.remove(player_name)
+    if player_name == room.host_player_name and room.players:
         room.host_player_name = room.players[0]
     if not room.players:
         del rooms[room_id]
-        return Response()
+        return Response(data=room)
     return Response(data=room)
 
 
 @app.post("/room/start")
-def start_game(room_id: str, host_player_id: str):
+async def start_game(room_id: str, host_player_name: str):
     if room_id not in rooms:
         raise HTTPException(404, "Room not found")
     room = rooms[room_id]
-    if room.host_player_name != host_player_id:
+    if room.host_player_name != host_player_name:
         raise HTTPException(403, "Only host can start")
     if len(room.players) < 3:
         raise HTTPException(400, "Need at least 3 players")
@@ -339,7 +338,7 @@ def start_game(room_id: str, host_player_id: str):
         game_state = _create_game_state(room.players)
         room.game_state = game_state
         room.status = RoomStatus.active
-        asyncio.create_task(
+        await asyncio.create_task(
             broadcast_to_room(
                 room_id,
                 {
@@ -354,11 +353,11 @@ def start_game(room_id: str, host_player_id: str):
 
 
 @app.delete("/room/delete")
-def delete_room(room_id: str, requester_id: str):
+def delete_room(room_id: str, player_name: str):
     if room_id not in rooms:
         raise HTTPException(404, "Room not found")
     room = rooms[room_id]
-    if room.status == RoomStatus.waiting or requester_id == room.host_player_name:
+    if room.status == RoomStatus.waiting or player_name == room.host_player_name:
         del rooms[room_id]
         asyncio.create_task(
             broadcast_to_room(room_id, {"type": "room_deleted", "data": {}})
