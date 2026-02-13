@@ -31,14 +31,25 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const connect = useCallback((roomId: string, playerName: string) => {
     const url = `ws://${API_BASE}/${roomId}/${playerName}`;
 
-    // 如果已在连接相同地址，跳过
-    if (socketRef.current?.url === url && socketRef.current.readyState === WebSocket.OPEN) {
+    const currentWs=socketRef.current
+
+    // ✅ 1. 如果已经连接且 URL 相同，什么都不做
+    if (currentWs?.url === url &&
+        currentWs.readyState === WebSocket.OPEN) {
       return;
     }
 
-    // 关闭旧连接
-    if (socketRef.current) {
-      socketRef.current.close();
+    // ✅ 2. 如果正在连接中且 URL 相同，等待即可
+    if (currentWs?.url === url &&
+        currentWs.readyState === WebSocket.CONNECTING) {
+      return;
+    }
+
+    // ✅ 3. 只有 URL 不同时，才关闭旧连接
+    if (currentWs && currentWs.url !== url) {
+      console.log(currentWs.url)
+      console.log(url)
+      currentWs.close();
     }
 
     console.log("🔌 Connecting to:", url);
@@ -64,15 +75,17 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, []);
 
   const disconnect = useCallback(() => {
-    // if (socketRef.current) {
-    //   socketRef.current.close();
-    // }
+    if (socketRef.current) {
+      console.trace('🔴 disconnect() 被调用！调用栈：');
+      socketRef.current.close();
+    }
   }, []);
 
   // 应用卸载时清理
   useEffect(() => {
     return () => {
       if (socketRef.current) {
+        console.log("组件卸载!")
         socketRef.current.close();
       }
     };

@@ -1,4 +1,4 @@
-import React, {useEffect, useRef, useState} from "react";
+import React, {useState} from "react";
 import {
   Box,
   Button,
@@ -10,7 +10,6 @@ import {
   useColorModeValue,
   Text,
 } from "@chakra-ui/react";
-import { v4 as uuidv4 } from "uuid";
 import { createRoom, joinRoom } from "../../services/api";
 import { useNavigate } from "react-router-dom";
 import {useSocket} from "../../context/SocketContext.tsx";
@@ -19,12 +18,6 @@ const GameLobby: React.FC = () => {
   const navigate = useNavigate();
   const { connect} = useSocket();
 
-  useEffect(() => {
-    if (!localStorage.getItem("playerId")) {
-      const playerId = uuidv4();
-      localStorage.setItem("playerId", playerId);
-    }
-  }, []);
   const bgColor = useColorModeValue("gray.50", "gray.900");
   const cardBg = useColorModeValue("white", "gray.800");
   const textColor = useColorModeValue("gray.800", "white");
@@ -74,7 +67,6 @@ const GameLobby: React.FC = () => {
             borderRadius="full"
             opacity={0.1}
           />
-
           <Box position="relative" zIndex={10}>
             <Heading
               as="h1"

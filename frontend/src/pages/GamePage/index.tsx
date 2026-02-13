@@ -34,13 +34,7 @@ import {
 } from "../../services/api";
 
 interface Player {
-  id: string;
   name: string;
-  coins: number;
-  handCount: number;
-  investments: Record<number, number>; // 公司ID -> 持股数量
-  antitrustTokens: number[]; // 玩家拥有反垄断标记的公司列表
-  isActive: boolean;
 }
 
 interface MarketCard {
@@ -53,7 +47,7 @@ const GamePage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const { isConnected, connect, disconnect, socket } = useSocket();
+  const { isConnected, socket } = useSocket();
   const toast = useToast();
 
   const roomId = location.state?.room_id || searchParams.get("room_id");
@@ -63,30 +57,18 @@ const GamePage: React.FC = () => {
   const [isWaiting, setIsWaiting] = React.useState(true);
   const [joinedPlayers, setJoinedPlayers] = React.useState<Player[]>([
     {
-      id: "p1",
-      name: "我",
-      coins: 10,
-      handCount: 3,
-      investments: {},
-      antitrustTokens: [],
-      isActive: false,
+      name: playerName
     },
   ]);
 
-  // 模拟好友加入（仅演示用，实际应通过 socket 监听）
+  // 好友加入（仅演示用，实际应通过 socket 监听）
   useEffect(() => {
     if (isWaiting) {
       const timer = setTimeout(() => {
         setJoinedPlayers((prev) => [
           ...prev,
           {
-            id: "p2",
-            name: "好友 A",
-            coins: 10,
-            handCount: 3,
-            investments: {},
-            antitrustTokens: [],
-            isActive: false,
+            name: "好友A",
           },
         ]);
       }, 2000);
@@ -143,32 +125,14 @@ const GamePage: React.FC = () => {
         isClosable: true,
         position: "top",
       });
+      //todo 此处获取全部玩家初始状态
     }
-    // TODO: 发送开始游戏指令
-    // if (socket && isConnected) {
-    //   socket.send(JSON.stringify({ action: "start_game", room_id: roomId }));
-    // }
   };
-
-  useEffect(() => {
-    if (!roomId) {
-      navigate("/");
-      return;
-    }
-    // 连接逻辑在真实后端集成时开启
-    const playerId = localStorage.getItem("playerId");
-    if (!playerId) {
-      navigate("/");
-      return;
-    }
-    // connect(roomId, playerId);
-    return () => disconnect();
-  }, [roomId]);
 
   useEffect(() => {
     if (isConnected) {
       toast({
-        title: "连接成功",
+        title: "加入成功",
         status: "success",
         duration: 2000,
         position: "top",
@@ -176,9 +140,8 @@ const GamePage: React.FC = () => {
     }
   }, [isConnected, toast]);
 
-  // --- 模拟状态 ---
   // 在实际应用中，这部分数据来自 socket onmessage
-  const opponents: Player[] = Array(5)
+  const opponents: Player[] = Array(6)
     .fill(null)
     .map((_, i) => ({
       id: `p${i + 2}`,
@@ -191,13 +154,7 @@ const GamePage: React.FC = () => {
     }));
 
   const me: Player = {
-    id: "p1",
-    name: "我",
-    coins: 10,
-    handCount: 3,
-    investments: { 5: 1, 6: 1, 7: 1, 8: 1, 9: 2, 10: 1 },
-    antitrustTokens: [9],
-    isActive: false,
+    name: playerName
   };
 
   const market: MarketCard[] = [
