@@ -18,14 +18,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 # ====== 常量 ======
-COMPANIES = ["Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta"]
+COMPANIES = ["card5", "card6", "card7", "card8", "card9", "card10"]
 COMPANY_CARD_COUNTS = {
-    "Alpha": 5,
-    "Beta": 6,
-    "Gamma": 7,
-    "Delta": 8,
-    "Epsilon": 9,
-    "Zeta": 10,
+    "card5": 5,
+    "card6": 6,
+    "card7": 7,
+    "card8": 8,
+    "card9": 9,
+    "card10": 10,
 }
 
 
