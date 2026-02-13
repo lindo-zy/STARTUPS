@@ -8,7 +8,6 @@ interface CreateRoomParams {
 }
 
 export const createRoom = async (params: CreateRoomParams) => {
-  // const { host_player_id, max_players = 7 } = params;
   return apiClient.post("/room/create", null, {
     params: params,
   });

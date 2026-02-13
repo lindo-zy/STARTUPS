@@ -14,133 +14,133 @@
       "aa": {
         "player_id": "aa",
         "hand": [
-          "Zeta",
-          "Gamma",
-          "Epsilon"
+          "card5",
+          "card9",
+          "card5"
         ],
         "investments": {
-          "Alpha": 0,
-          "Beta": 0,
-          "Gamma": 0,
-          "Delta": 0,
-          "Epsilon": 0,
-          "Zeta": 0
+          "card5": 0,
+          "card6": 0,
+          "card7": 0,
+          "card8": 0,
+          "card9": 0,
+          "card10": 0
         },
         "money": 10,
         "score": 0,
         "has_antimonopoly": {
-          "Alpha": false,
-          "Beta": false,
-          "Gamma": false,
-          "Delta": false,
-          "Epsilon": false,
-          "Zeta": false
+          "card5": false,
+          "card6": false,
+          "card7": false,
+          "card8": false,
+          "card9": false,
+          "card10": false
         }
       },
       "aa1": {
         "player_id": "aa1",
         "hand": [
-          "Zeta",
-          "Gamma",
-          "Beta"
+          "card9",
+          "card10",
+          "card8"
         ],
         "investments": {
-          "Alpha": 0,
-          "Beta": 0,
-          "Gamma": 0,
-          "Delta": 0,
-          "Epsilon": 0,
-          "Zeta": 0
+          "card5": 0,
+          "card6": 0,
+          "card7": 0,
+          "card8": 0,
+          "card9": 0,
+          "card10": 0
         },
         "money": 10,
         "score": 0,
         "has_antimonopoly": {
-          "Alpha": false,
-          "Beta": false,
-          "Gamma": false,
-          "Delta": false,
-          "Epsilon": false,
-          "Zeta": false
+          "card5": false,
+          "card6": false,
+          "card7": false,
+          "card8": false,
+          "card9": false,
+          "card10": false
         }
       },
       "bb": {
         "player_id": "bb",
         "hand": [
-          "Zeta",
-          "Alpha",
-          "Alpha"
+          "card6",
+          "card7",
+          "card6"
         ],
         "investments": {
-          "Alpha": 0,
-          "Beta": 0,
-          "Gamma": 0,
-          "Delta": 0,
-          "Epsilon": 0,
-          "Zeta": 0
+          "card5": 0,
+          "card6": 0,
+          "card7": 0,
+          "card8": 0,
+          "card9": 0,
+          "card10": 0
         },
         "money": 10,
         "score": 0,
         "has_antimonopoly": {
-          "Alpha": false,
-          "Beta": false,
-          "Gamma": false,
-          "Delta": false,
-          "Epsilon": false,
-          "Zeta": false
+          "card5": false,
+          "card6": false,
+          "card7": false,
+          "card8": false,
+          "card9": false,
+          "card10": false
         }
       }
     },
     "market_deck": [
-      "Zeta",
-      "Delta",
-      "Delta",
-      "Beta",
-      "Epsilon",
-      "Epsilon",
-      "Gamma",
-      "Zeta",
-      "Epsilon",
-      "Beta",
-      "Zeta",
-      "Delta",
-      "Gamma",
-      "Delta",
-      "Zeta",
-      "Zeta",
-      "Zeta",
-      "Delta",
-      "Zeta",
-      "Beta",
-      "Epsilon",
-      "Epsilon",
-      "Alpha",
-      "Gamma",
-      "Gamma",
-      "Beta",
-      "Beta",
-      "Delta",
-      "Delta",
-      "Gamma",
-      "Alpha"
+      "card5",
+      "card10",
+      "card10",
+      "card10",
+      "card7",
+      "card8",
+      "card7",
+      "card5",
+      "card7",
+      "card8",
+      "card9",
+      "card9",
+      "card9",
+      "card6",
+      "card9",
+      "card5",
+      "card10",
+      "card6",
+      "card8",
+      "card6",
+      "card10",
+      "card7",
+      "card10",
+      "card7",
+      "card10",
+      "card10",
+      "card9",
+      "card6",
+      "card8",
+      "card8",
+      "card8"
     ],
     "market_display": [],
     "removed_cards": [
-      "Epsilon",
-      "Delta",
-      "Epsilon",
-      "Alpha",
-      "Epsilon"
+      "card9",
+      "card9",
+      "card7",
+      "card8",
+      "card10"
     ],
     "current_player_id": "aa",
     "round_number": 1,
     "status": "active",
     "antimonopoly_owner": {
-      "Alpha": null,
-      "Beta": null,
-      "Gamma": null,
-      "Delta": null,
-      "Epsilon": null,
-      "Zeta": null
+      "card5": null,
+      "card6": null,
+      "card7": null,
+      "card8": null,
+      "card9": null,
+      "card10": null
     }
   }
 }
