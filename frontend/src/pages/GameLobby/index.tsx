@@ -17,7 +17,7 @@ import {useSocket} from "../../context/SocketContext.tsx";
 
 const GameLobby: React.FC = () => {
   const navigate = useNavigate();
-  const { isConnected, connect, disconnect, socket } = useSocket();
+  const { connect} = useSocket();
 
   useEffect(() => {
     if (!localStorage.getItem("playerId")) {
@@ -84,7 +84,7 @@ const GameLobby: React.FC = () => {
               fontWeight="bold"
               color={textColor}
             >
-              游戏大厅
+              {/*游戏大厅*/}
             </Heading>
 
             <VStack spacing={6} align="stretch">
@@ -114,7 +114,6 @@ const GameLobby: React.FC = () => {
                       navigate(`/game`, {
                         state: { room_id: res.room_id, type: "create" },
                       });
-
                     }
                   }}
                 >
@@ -156,14 +155,6 @@ const GameLobby: React.FC = () => {
                     _focus={{ boxShadow: "0 0 0 3px rgba(16, 185, 129, 0.5)" }}
                     transition="all 0.3s ease"
                     onClick={async () => {
-                      // const playerId = localStorage.getItem("playerId");
-                      // if (!playerId) {
-                      //   return;
-                      // }
-                      // navigate(`/game`, {
-                      //   state: { room_id: "123456" },
-                      // });
-                      // return;
                       const res = await joinRoom({
                         room_id: roomId,
                         player_name: playerName,
@@ -188,7 +179,7 @@ const GameLobby: React.FC = () => {
       {/* 页脚 */}
       <Box mt={8} textAlign="center">
         <Text fontSize="sm" color="gray.500">
-          © 2026 游戏平台 | 享受游戏时光
+          {/*© 2026 游戏平台 | 享受游戏时光*/}
         </Text>
       </Box>
     </Box>

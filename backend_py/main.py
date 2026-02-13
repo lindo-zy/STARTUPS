@@ -7,9 +7,16 @@ from typing import Dict, List, Optional, Literal, Set, Any
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from pydantic.v1 import Field
+from starlette.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="Startups")
-
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 # ====== 常量 ======
 COMPANIES = ["Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta"]
 COMPANY_CARD_COUNTS = {
@@ -63,7 +70,7 @@ class RoomStatus(str, Enum):
 
 class Room(BaseModel):
     room_id: str
-    host_player_id: str
+    host_player_name: str
     max_players: int = 7
     players: List[str]
     status: RoomStatus
@@ -214,7 +221,7 @@ def _get_active_room(room_id: str) -> Room:
 
 
 # ====== WebSocket 路由 ======
-@app.websocket("/ws/{room_id}/{player_name}")
+@app.websocket("/{room_id}/{player_name}")
 async def websocket_endpoint(websocket: WebSocket, room_id: str, player_name: str):
     await websocket.accept()
     print(rooms)
@@ -258,7 +265,7 @@ def create_room(host_player_name: str):
     room_id = "123456"
     room = Room(
         room_id=room_id,
-        host_player_id=host_player_name,
+        host_player_name=host_player_name,
         players=[host_player_name],
         status=RoomStatus.waiting,
     )
@@ -271,7 +278,7 @@ def list_rooms():
     data = [
         {
             "room_id": r.room_id,
-            "host": r.host_player_id,
+            "host": r.host_player_name,
             "players": r.players,
             "max_players": r.max_players,
             "status": r.status,
@@ -307,8 +314,8 @@ def leave_room(room_id: str, player_id: str):
     if room.status != RoomStatus.waiting:
         raise HTTPException(400, "Cannot leave after game started")
     room.players.remove(player_id)
-    if player_id == room.host_player_id and room.players:
-        room.host_player_id = room.players[0]
+    if player_id == room.host_player_name and room.players:
+        room.host_player_name = room.players[0]
     if not room.players:
         del rooms[room_id]
         return Response()
@@ -320,7 +327,7 @@ def start_game(room_id: str, host_player_id: str):
     if room_id not in rooms:
         raise HTTPException(404, "Room not found")
     room = rooms[room_id]
-    if room.host_player_id != host_player_id:
+    if room.host_player_name != host_player_id:
         raise HTTPException(403, "Only host can start")
     if len(room.players) < 3:
         raise HTTPException(400, "Need at least 3 players")
@@ -351,7 +358,7 @@ def delete_room(room_id: str, requester_id: str):
     if room_id not in rooms:
         raise HTTPException(404, "Room not found")
     room = rooms[room_id]
-    if room.status == RoomStatus.waiting or requester_id == room.host_player_id:
+    if room.status == RoomStatus.waiting or requester_id == room.host_player_name:
         del rooms[room_id]
         asyncio.create_task(
             broadcast_to_room(room_id, {"type": "room_deleted", "data": {}})
@@ -534,4 +541,4 @@ def root():
 if __name__ == "__main__":
     from uvicorn import run
 
-    run(app="main:app", host="127.0.0.1", port=8080,reload=True)
+    run(app="main:app", host="127.0.0.1", port=8080, reload=True)
