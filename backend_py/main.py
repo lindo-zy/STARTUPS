@@ -205,6 +205,7 @@ def _end_round(game: GameState):
         for p in game.players.values():
             p.hand = [game.market_deck.pop() for _ in range(3)]
         game.current_player_id = list(game.players.keys())[0]
+
         for comp in COMPANIES:
             _update_antimonopoly_token(game, comp)
 
@@ -232,11 +233,14 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, player_name: st
         websocket_connections[room_id] = set()
     websocket_connections[room_id].add(websocket)
 
-
     try:
         if room_id in rooms:
             room = rooms[room_id]
-            await asyncio.create_task(broadcast_to_room(room_id, {"type": "room_state", "data": room.model_dump()}))
+            await asyncio.create_task(
+                broadcast_to_room(
+                    room_id, {"type": "room_state", "data": room.model_dump()}
+                )
+            )
 
         while True:
             data = await websocket.receive_text()

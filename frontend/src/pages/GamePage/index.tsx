@@ -32,15 +32,45 @@ import {
   takeFromMarket,
 } from "../../services/api";
 
+type Card = `card${5 | 6 | 7 | 8 | 9 | 10}`;
+
+// 玩家的游戏状态
+interface PlayerGameState {
+  player_id: string;
+  hand: Card[];
+  investments: Record<Card, number>;
+  money: number;
+  score: number;
+  has_antimonopoly: Record<Card, boolean>;
+}
+
+// 游戏整体状态
+interface GameState {
+  game_id: string;
+  players: Record<string, PlayerGameState>;
+  market_deck: Card[];
+  market_display: Card[]; // 当前为空数组，但保留类型
+  removed_cards: Card[];
+  current_player_id: string;
+  round_number: number;
+  status: 'active' | string; // 可扩展其他状态
+  antimonopoly_owner: Record<Card, string | null>;
+}
+
+// 房间信息
+interface RoomData {
+  room_id: string;
+  host_player_name: string;
+  max_players: number;
+  players: string[];
+  status: 'active' | string;
+  game_state: GameState;
+}
+
+
 interface Player {
   id:number;
   name: string;
-}
-
-interface MarketCard {
-  id: string;
-  company: number;
-  coins: number;
 }
 
 const GamePage: React.FC = () => {
@@ -58,18 +88,7 @@ const GamePage: React.FC = () => {
   const [isWaiting, setIsWaiting] = React.useState(true);
   const [joinedPlayers, setJoinedPlayers] = React.useState<Player[]>([]);
 
-  // 在实际应用中，这部分数据来自 socket onmessage
-  const opponents: Player[] = Array(6)
-      .fill(null)
-      .map((_, i) => ({
-        id: `p${i + 2}`,
-        name: `玩家 ${i + 2}`,
-        coins: 10,
-        handCount: 3,
-        investments: { 5: i === 0 ? 2 : 0, 10: i === 1 ? 3 : 0 },
-        antitrustTokens: i === 0 ? [5] : i === 1 ? [10] : [],
-        isActive: i === 0,
-      }));
+  const [gameState,setGameState]=React.useState<GameState>();
 
   // 监听 socket 消息更新玩家列表
   useEffect(() => {
@@ -104,7 +123,7 @@ const GamePage: React.FC = () => {
         socket.removeEventListener("message", handleMessage);
       };
     }
-  }, [socket, isWaiting, toast]);
+  }, [socket, isWaiting, toast, playerName]);
 
   const handleStartGame = async () => {
     if (joinedPlayers.length < 2) {
@@ -132,28 +151,15 @@ const GamePage: React.FC = () => {
         isClosable: true,
         position: "top",
       });
-      //todo 此处获取全部玩家初始状态
-      console.log(res);
-
+      setGameState(res.data);
     }
   };
-
 
 
   const me: Player = {
     id:meId,
     name: playerName
   };
-
-  const market: MarketCard[] = [
-    { id: "m1", company: 6, coins: 1 },
-    { id: "m2", company: 8, coins: 0 },
-    { id: "m3", company: 6, coins: 3 },
-  ];
-
-  const myHand = [5, 6, 10]; // 手牌中的公司ID
-
-  const deckCount = 38;
 
   if (isWaiting) {
     return (
@@ -328,7 +334,10 @@ const GamePage: React.FC = () => {
             colorScheme="red"
             leftIcon={<Icon as={FaSignOutAlt} />}
             onClick={async () => {
-              await leaveRoom(roomId);
+              await leaveRoom({
+                room_id: roomId,
+                player_name: playerName,});
+              disconnect()
               navigate("/");
             }}
           >

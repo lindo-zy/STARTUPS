@@ -1,0 +1,146 @@
+{
+  "room_id": "123456",
+  "host_player_name": "aa",
+  "max_players": 7,
+  "players": [
+    "aa",
+    "aa1",
+    "bb"
+  ],
+  "status": "active",
+  "game_state": {
+    "game_id": "game_aa",
+    "players": {
+      "aa": {
+        "player_id": "aa",
+        "hand": [
+          "card5",
+          "card9",
+          "card5"
+        ],
+        "investments": {
+          "card5": 0,
+          "card6": 0,
+          "card7": 0,
+          "card8": 0,
+          "card9": 0,
+          "card10": 0
+        },
+        "money": 10,
+        "score": 0,
+        "has_antimonopoly": {
+          "card5": false,
+          "card6": false,
+          "card7": false,
+          "card8": false,
+          "card9": false,
+          "card10": false
+        }
+      },
+      "aa1": {
+        "player_id": "aa1",
+        "hand": [
+          "card9",
+          "card10",
+          "card8"
+        ],
+        "investments": {
+          "card5": 0,
+          "card6": 0,
+          "card7": 0,
+          "card8": 0,
+          "card9": 0,
+          "card10": 0
+        },
+        "money": 10,
+        "score": 0,
+        "has_antimonopoly": {
+          "card5": false,
+          "card6": false,
+          "card7": false,
+          "card8": false,
+          "card9": false,
+          "card10": false
+        }
+      },
+      "bb": {
+        "player_id": "bb",
+        "hand": [
+          "card6",
+          "card7",
+          "card6"
+        ],
+        "investments": {
+          "card5": 0,
+          "card6": 0,
+          "card7": 0,
+          "card8": 0,
+          "card9": 0,
+          "card10": 0
+        },
+        "money": 10,
+        "score": 0,
+        "has_antimonopoly": {
+          "card5": false,
+          "card6": false,
+          "card7": false,
+          "card8": false,
+          "card9": false,
+          "card10": false
+        }
+      }
+    },
+    "market_deck": [
+      "card5",
+      "card10",
+      "card10",
+      "card10",
+      "card7",
+      "card8",
+      "card7",
+      "card5",
+      "card7",
+      "card8",
+      "card9",
+      "card9",
+      "card9",
+      "card6",
+      "card9",
+      "card5",
+      "card10",
+      "card6",
+      "card8",
+      "card6",
+      "card10",
+      "card7",
+      "card10",
+      "card7",
+      "card10",
+      "card10",
+      "card9",
+      "card6",
+      "card8",
+      "card8",
+      "card8"
+    ],
+    "market_display": [],
+    "removed_cards": [
+      "card9",
+      "card9",
+      "card7",
+      "card8",
+      "card10"
+    ],
+    "current_player_id": "aa",
+    "round_number": 1,
+    "status": "active",
+    "antimonopoly_owner": {
+      "card5": null,
+      "card6": null,
+      "card7": null,
+      "card8": null,
+      "card9": null,
+      "card10": null
+    }
+  }
+}
