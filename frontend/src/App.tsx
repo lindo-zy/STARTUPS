@@ -2,6 +2,7 @@ import React, { Suspense } from "react";
 import { BrowserRouter as Router, useRoutes } from "react-router-dom";
 
 import routes from "./config/routes";
+import { SocketProvider } from "./context/SocketContext";
 
 const RouteApp: React.FC = () => {
   const element = useRoutes(routes);
@@ -10,17 +11,19 @@ const RouteApp: React.FC = () => {
 
 function App() {
   return (
-    <Router>
-      <Suspense
-        fallback={
-          <div className="flex items-center justify-center min-h-screen">
-            Loading...
-          </div>
-        }
-      >
-        <RouteApp />
-      </Suspense>
-    </Router>
+    <SocketProvider>
+      <Router>
+        <Suspense
+          fallback={
+            <div className="flex items-center justify-center min-h-screen">
+              Loading...
+            </div>
+          }
+        >
+          <RouteApp />
+        </Suspense>
+      </Router>
+    </SocketProvider>
   );
 }
 

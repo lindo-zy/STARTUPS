@@ -1,0 +1,18 @@
+services:
+  backend:
+    build: ./backend_py
+    restart: unless-stopped
+    environment:
+      # 玩家断线后等待重连的宽限期(秒),超时自动移出房间
+      - STARTUPS_DISCONNECT_GRACE=120
+    # 如需绕过 nginx 直连后端(如本地调试),取消下面注释:
+    # ports:
+    #   - "8080:8080"
+
+  web:
+    build: ./frontend
+    ports:
+      - "80:80"    # 手机/电脑浏览器访问 http://服务器IP/
+    depends_on:
+      - backend
+    restart: unless-stopped

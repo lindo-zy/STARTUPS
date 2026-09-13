@@ -1,12 +1,16 @@
 // SocketContext.tsx
 import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from "react";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'localhost:8080';
+// VITE_API_BASE_URL 为空时用页面自身的 host(同源部署,https 下自动用 wss)
+const apiBase = (import.meta.env.VITE_API_BASE_URL || "").trim().replace(/\/$/, "");
+const WS_BASE = apiBase
+  ? `ws://${apiBase}`
+  : `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}`;
 
 interface SocketContextType {
   socket: WebSocket | null;
   isConnected: boolean;
-  connect: (roomId: string, playerName: string) => void;
+  connect: (roomId: string, playerName: string, token: string) => void;
   disconnect: () => void;
 }
 
@@ -17,6 +21,7 @@ const SocketContext = createContext<SocketContextType>({
   disconnect: () => {},
 });
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useSocket = () => useContext(SocketContext);
 
 export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -28,56 +33,58 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     socketRef.current = socket;
   }, [socket]);
 
-  const connect = useCallback((roomId: string, playerName: string) => {
-    const url = `ws://${API_BASE}/${roomId}/${playerName}`;
+  const connect = useCallback((roomId: string, playerName: string, token: string) => {
+    const url = `${WS_BASE}/${roomId}/${encodeURIComponent(
+      playerName,
+    )}?token=${encodeURIComponent(token)}`;
 
-    const currentWs=socketRef.current
+    const currentWs = socketRef.current;
 
-    // ✅ 1. 如果已经连接且 URL 相同，什么都不做
-    if (currentWs?.url === url &&
-        currentWs.readyState === WebSocket.OPEN) {
+    // 1. 已经连接且 URL 相同,什么都不做
+    if (currentWs?.url === url && currentWs.readyState === WebSocket.OPEN) {
       return;
     }
 
-    // ✅ 2. 如果正在连接中且 URL 相同，等待即可
-    if (currentWs?.url === url &&
-        currentWs.readyState === WebSocket.CONNECTING) {
+    // 2. 正在连接中且 URL 相同,等待即可
+    if (currentWs?.url === url && currentWs.readyState === WebSocket.CONNECTING) {
       return;
     }
 
-    // ✅ 3. 只有 URL 不同时，才关闭旧连接
+    // 3. URL 不同时,关闭旧连接
     if (currentWs && currentWs.url !== url) {
-      console.log(currentWs.url)
-      console.log(url)
+      currentWs.onclose = null; // 主动替换连接,不触发旧连接的断开回调
       currentWs.close();
     }
 
-    console.log("🔌 Connecting to:", url);
     const ws = new WebSocket(url);
     socketRef.current = ws;
     setSocket(ws);
 
     ws.onopen = () => {
       setIsConnected(true);
-      console.log("✅ WebSocket 连接");
     };
 
     ws.onclose = (event) => {
       setIsConnected(false);
-      console.warn("🔌 WebSocket 断开", event.code, event.reason);
+      if (event.code === 1008) {
+        console.warn("WebSocket 鉴权失败或已不在房间中", event.reason);
+      }
     };
 
     ws.onerror = (error) => {
-      console.error("❌ WebSocket error", error);
+      console.error("WebSocket error", error);
     };
 
-    // 注意：不要在这里设置 onmessage！让组件自己 addEventListener
+    // 注意:不要在这里设置 onmessage!让组件自己 addEventListener
   }, []);
 
   const disconnect = useCallback(() => {
     if (socketRef.current) {
-      console.trace('🔴 disconnect() 被调用！调用栈：');
+      socketRef.current.onclose = null;
       socketRef.current.close();
+      socketRef.current = null;
+      setSocket(null);
+      setIsConnected(false);
     }
   }, []);
 
@@ -85,15 +92,14 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   useEffect(() => {
     return () => {
       if (socketRef.current) {
-        console.log("组件卸载!")
         socketRef.current.close();
       }
     };
   }, []);
 
   return (
-      <SocketContext.Provider value={{ socket, isConnected, connect, disconnect }}>
-        {children}
-      </SocketContext.Provider>
+    <SocketContext.Provider value={{ socket, isConnected, connect, disconnect }}>
+      {children}
+    </SocketContext.Provider>
   );
 };

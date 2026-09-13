@@ -109,3 +109,60 @@ STARTUPS
 提供 HTTP 接口用于房间创建/加入
 提供 WebSocket 连接用于实时通信
 ```
+---
+
+## 快速开始
+
+```bash
+# 1. 启动后端(FastAPI,端口 8080)
+cd backend_py
+pip install -r requirements.txt
+python main.py
+
+# 2. 启动前端(Vite,端口 5173)
+cd ../frontend
+npm install
+npm run dev
+# 浏览器访问 http://localhost:5173
+```
+
+- 实现说明与接口文档见 [backend_py/README.md](backend_py/README.md)。
+- 集成测试(模拟 3 人完整对局):`cd backend_py && python3 test_game_flow.py`。
+- 通信方式:HTTP 负责所有操作(创建/加入房间、抽牌、拿市场牌、出牌),
+  WebSocket 负责服务端向各玩家推送**个性化**的实时状态(只含自己的手牌)。
+- 当前实现为 Python/FastAPI 版;根目录 `cmd/`、`internal/` 下的 Go 骨架与
+  `offline/` 的规则模拟器为早期产物,不再维护。
+
+---
+
+## 手机端与服务器部署
+
+手机端已适配:竖屏布局(375px 宽起)、对手区横向滑动、手牌点选式操作(桌面端悬停操作保持不变)。
+
+### 部署到服务器(Docker)
+
+服务器需安装 Docker 与 Docker Compose 插件:
+
+```bash
+git clone <仓库地址> && cd STARTUPS
+docker compose up -d --build
+```
+
+完成后手机/电脑浏览器访问 `http://服务器IP/` 即可开玩。容器内 nginx 提供 Web 页面,
+并把 `/room` 接口与 `/<房间号>/<玩家名>` 的 WebSocket **同源反代**到后端——前端以同源模式
+构建,天然无跨域问题。记得放行防火墙 80 端口。
+
+- 前后端分开部署:`docker build --build-arg VITE_API_BASE_URL=后端地址:端口 -t startups-web ./frontend`
+- 公网 HTTPS:在最外层再挂一层带证书的 nginx/caddy 即可,页面走 https 时前端自动改用 wss 连接。
+- 常用运维:`docker compose logs -f web` 看日志、`docker compose up -d --build` 更新重启。
+
+### 局域网手机调试(不装 Docker)
+
+```bash
+# 终端 1:后端监听所有网卡
+cd backend_py && python3 -m uvicorn main:app --host 0.0.0.0 --port 8080
+# 终端 2:前端走同源代理并监听局域网
+cd frontend && VITE_API_BASE_URL= npm run dev -- --host
+```
+
+手机浏览器访问 `http://<电脑局域网IP>:5173`(需与电脑同一 Wi-Fi)。

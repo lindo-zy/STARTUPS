@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from "react";
+import React, { useEffect, useState } from "react";
 import {
   Box,
   Button,
@@ -8,46 +8,82 @@ import {
   HStack,
   Center,
   useColorModeValue,
-  Text, useToast,
+  Text,
+  useToast,
 } from "@chakra-ui/react";
-import { createRoom, joinRoom } from "../../services/api";
+import { createRoom, joinRoom, storeIdentity } from "../../services/api";
 import { useNavigate } from "react-router-dom";
-import {useSocket} from "../../context/SocketContext.tsx";
-import {resolveStyleConfig} from "@chakra-ui/icons";
+import { useSocket } from "../../context/SocketContext.tsx";
 
 const GameLobby: React.FC = () => {
   const navigate = useNavigate();
-  const { connect} = useSocket();
+  const { connect } = useSocket();
 
   const bgColor = useColorModeValue("gray.50", "gray.900");
   const cardBg = useColorModeValue("white", "gray.800");
   const textColor = useColorModeValue("gray.800", "white");
   const [playerName, setPlayerName] = useState(() => {
-    const saved = localStorage.getItem("playerName");
-    return saved || "";
+    return localStorage.getItem("playerName") || "";
   });
   const [roomId, setRoomId] = useState("");
   const toast = useToast();
+
   useEffect(() => {
     if (playerName) {
       localStorage.setItem("playerName", playerName);
     } else {
       localStorage.removeItem("playerName");
     }
-    if(roomId){
-      localStorage.setItem("roomId", roomId);
-    }else{
-      localStorage.removeItem("roomId");
+  }, [playerName]);
+
+  const showError = (error: unknown) => {
+    const message = error instanceof Error ? error.message : "请求失败,请稍后重试";
+    toast({
+      title: message,
+      status: "error",
+      duration: 2500,
+      position: "top",
+    });
+  };
+
+  const handleCreateRoom = async () => {
+    if (!playerName.trim()) {
+      toast({ title: "请先填写用户昵称", status: "warning", duration: 2000, position: "top" });
+      return;
     }
-
-  }, [playerName,roomId]);
-
-  const handleInputChange = (e) => {
-    setPlayerName(e.target.value);
+    try {
+      const identity = await createRoom(playerName.trim());
+      storeIdentity(identity.token, identity.room_id);
+      connect(identity.room_id, playerName.trim(), identity.token);
+      navigate("/game", {
+        state: { room_id: identity.room_id, type: "create" },
+      });
+    } catch (error) {
+      showError(error);
+    }
   };
-  const handleRoomInputChange = (e) => {
-    setRoomId(e.target.value);
+
+  const handleJoinRoom = async () => {
+    if (!playerName.trim()) {
+      toast({ title: "请先填写用户昵称", status: "warning", duration: 2000, position: "top" });
+      return;
+    }
+    if (!roomId.trim()) {
+      toast({ title: "请输入房间号", status: "warning", duration: 2000, position: "top" });
+      return;
+    }
+    try {
+      const identity = await joinRoom(roomId.trim(), playerName.trim());
+      storeIdentity(identity.token, identity.room_id);
+      connect(identity.room_id, playerName.trim(), identity.token);
+      navigate("/game", {
+        state: { room_id: identity.room_id },
+      });
+    } catch (error) {
+      showError(error);
+    }
   };
+
   return (
     <Box minH="100vh" p={4} bg={bgColor} w="full">
       <Center h="100vh">
@@ -115,19 +151,7 @@ const GameLobby: React.FC = () => {
                   _active={{ bg: "blue.700" }}
                   _focus={{ boxShadow: "0 0 0 3px rgba(59, 130, 246, 0.5)" }}
                   transition="all 0.3s ease"
-                  onClick={async () => {
-                    const res = await createRoom({
-                      host_player_name: playerName,
-                    });
-                    if (res) {
-                      //创建Websocket
-                      connect(res.room_id,playerName);
-                      setRoomId(res.room_id)
-                      navigate(`/game`, {
-                        state: { room_id: res.room_id, type: "create" },
-                      });
-                    }
-                  }}
+                  onClick={handleCreateRoom}
                 >
                   创建房间
                 </Button>
@@ -136,23 +160,25 @@ const GameLobby: React.FC = () => {
                 placeholder="用户昵称"
                 size="lg"
                 value={playerName}
-                onChange={handleInputChange}
+                maxLength={20}
+                onChange={(e) => setPlayerName(e.target.value)}
               />
               {/* 加入房间区域 */}
               <Box>
                 <HStack spacing={3}>
                   <Input
-                    placeholder="输入房间ID"
+                    placeholder="输入6位房间号"
                     variant="outline"
                     size="lg"
                     focusBorderColor="blue.500"
                     borderRadius="md"
                     flex="1"
+                    maxLength={6}
                     _focus={{ boxShadow: "0 0 0 3px rgba(59, 130, 246, 0.3)" }}
                     bg={useColorModeValue("white", "gray.700")}
                     borderColor={useColorModeValue("gray.200", "gray.600")}
                     value={roomId}
-                    onChange={handleRoomInputChange}
+                    onChange={(e) => setRoomId(e.target.value)}
                   />
                   <Button
                     colorScheme="green"
@@ -166,28 +192,7 @@ const GameLobby: React.FC = () => {
                     _active={{ bg: "green.700" }}
                     _focus={{ boxShadow: "0 0 0 3px rgba(16, 185, 129, 0.5)" }}
                     transition="all 0.3s ease"
-                    onClick={async () => {
-                      try {
-                        const res = await joinRoom({
-                          room_id: roomId,
-                          player_name: playerName,
-                        });
-                        connect(res.room_id, playerName);
-                        navigate(`/game`, {
-                          state: { room_id: res.room_id },
-                        });
-                      } catch (error) {
-                        if (error.response) {
-                          console.log('Status:', error.response.data); // axios 风格
-                          toast({
-                            title: JSON.stringify(error.response.data),
-                            status: "error",
-                            duration: 2000,
-                            position: "top",
-                          });
-                        }
-                      }
-                    }}
+                    onClick={handleJoinRoom}
                   >
                     加入
                   </Button>

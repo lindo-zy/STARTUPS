@@ -1,71 +1,39 @@
 import axios from "axios";
-const api=import.meta.env.VITE_API_BASE_URL
+
+// VITE_API_BASE_URL 为空时走同源相对路径(配合 nginx 反代,手机端同源访问),
+// 本地开发在 .env 里配置如 127.0.0.1:8080
+const apiBase = (import.meta.env.VITE_API_BASE_URL || "").trim().replace(/\/$/, "");
+
 // 创建 axios 实例
 const apiClient = axios.create({
-  baseURL: "http://"+api, // 基础 URL
+  baseURL: apiBase ? `http://${apiBase}` : "", // 基础 URL
   timeout: 10000, // 请求超时时间
   headers: {
     "Content-Type": "application/json",
   },
 });
 
-// 请求拦截器
-apiClient.interceptors.request.use(
-  (config) => {
-    // 在发送请求之前做些什么，比如添加认证令牌
-    const token = localStorage.getItem("authToken");
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => {
-    // 处理请求错误
-    return Promise.reject(error);
-  },
-);
+// 注意:本项目的身份令牌通过 query 参数传递(见 room.ts 的 authParams),
+// 后端不读取 Authorization 头。
 
-// 响应拦截器
+// 响应拦截器:后端统一信封 {code, message, data},成功时直接解包出 data,
+// 失败时抛出带可读 message 的 Error,页面直接 toast 展示。
 apiClient.interceptors.response.use(
   (response) => {
-    // 对响应数据做点什么
-    if (response.data.code === 200) {
-      return response.data.data;
+    const body = response.data;
+    if (body && typeof body === "object" && "code" in body) {
+      if (body.code === 200) {
+        return body.data;
+      }
+      return Promise.reject(new Error(body.message || "请求失败"));
     }
-    return response.data;
+    return body;
   },
   (error) => {
-    // 处理响应错误
-    if (error.response) {
-      // 服务器返回错误状态码
-      switch (error.response.status) {
-        case 401:
-          // 未授权，跳转到登录页
-          // window.location.href = '/login';
-          break;
-        case 403:
-          // 禁止访问
-          console.error("Access forbidden");
-          break;
-        case 404:
-          // 资源不存在
-          console.error("Resource not found");
-          break;
-        case 500:
-          // 服务器错误
-          console.error("Server error");
-          break;
-        default:
-          console.error("Request failed");
-      }
-    } else if (error.request) {
-      // 请求已发送但没有收到响应
-      console.error("No response received");
-    } else {
-      // 请求配置出错
-      console.error("Request error:", error.message);
-    }
-    return Promise.reject(error);
+    const body = error.response?.data;
+    const message =
+      body?.message || (typeof body?.detail === "string" ? body.detail : null) || error.message || "网络异常,请稍后重试";
+    return Promise.reject(Object.assign(new Error(message), { response: error.response }));
   },
 );
 

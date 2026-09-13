@@ -1,6 +1,6 @@
 import React from "react";
 import { HStack, VStack, Box, Badge, Icon } from "@chakra-ui/react";
-import { FaGrinStars, FaShieldAlt } from "react-icons/fa";
+import { FaGrinStars } from "react-icons/fa";
 import CardItem from "./CardItem";
 import { COMPANY_COLORS } from "../../../constants/game";
 
