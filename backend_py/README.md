@@ -42,6 +42,12 @@ python3 test_game_flow.py
   付款不足记负资产;按金钱排名 +2/+1/-1 分;打满设定轮数后总分最高者胜(平分按座位顺序)。
 - **资金兜底**:市场无牌可拿时费用为 0 恒可抽牌;资金不足且市场无牌可拿时免费抽一张,
   保证手牌数不变量,游戏不会死锁。
+- **AI 机器人**:房主在等待期可通过 `/room/add_bot` 添加(自动命名 `AI-1`、`AI-2`…,
+  自动就座并准备,占用普通座位上限,也可被移出)。开局后轮到机器人时,由服务端按固定
+  简单策略代打:获取阶段优先抽牌(付不起就从市场拿一张),出牌阶段直接投资第一张手牌
+  (投资不受反垄断/同回合拿回等限制,永远合法),不做任何策略思考。机器人动作之间留有
+  间隔(默认 1 秒,`STARTUPS_BOT_DELAY` 可调)并复用真人同款操作日志/事件广播;机器人
+  永不掉线,游戏不会因机器人卡住。
 - **个性化广播**:WebSocket 按“观察者”裁剪状态——只发自己的手牌,其他人只发数量,
   不泄露牌库与暗牌。页面挂载/刷新后发送 `sync` 上行消息可索取最新状态。
 
@@ -54,6 +60,7 @@ python3 test_game_flow.py
 | POST | `/room/ready?room_id=&player_name=&token=&ready=` | 准备/取消准备 |
 | POST | `/room/leave?room_id=&player_name=&token=` | 退出(房主退出=解散) |
 | POST | `/room/kick?room_id=&player_name=&token=&target_player_name=` | 房主移出玩家(仅等待期) |
+| POST | `/room/add_bot?room_id=&player_name=&token=` | 房主添加 AI 机器人(仅等待期,自动命名 AI-N 并准备) |
 | DELETE | `/room/delete?room_id=&player_name=&token=` | 解散房间(仅房主) |
 | GET | `/room/list` | 房间列表(不含已结束) |
 | GET | `/room/{room_id}` | 房间公共信息(不含任何手牌) |

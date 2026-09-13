@@ -51,6 +51,8 @@ app.add_middleware(
 
 # 等待期玩家断线后的移出宽限期(秒),容忍刷新页面等短暂重连
 DISCONNECT_GRACE_SECONDS = float(os.environ.get("STARTUPS_DISCONNECT_GRACE", "30"))
+# AI 机器人两个动作之间的间隔(秒),给真人玩家留出看清操作的时间
+BOT_MOVE_DELAY = float(os.environ.get("STARTUPS_BOT_DELAY", "1.0"))
 
 # ====== 游戏常量(与 README 规则一致) ======
 COMPANIES = [5, 6, 7, 8, 9, 10]  # 公司编号 = 卡牌面值 = 该公司卡牌总数
@@ -114,6 +116,7 @@ class RoomPlayer(BaseModel):
     seat: int
     token: str
     ready: bool = False
+    is_bot: bool = False  # AI 机器人:开局后由服务端代打,只做简单的摸牌/出牌
 
 
 class Room(BaseModel):
@@ -174,6 +177,14 @@ def _gen_room_id() -> str:
         room_id = f"{random.randint(0, 999999):06d}"
         if room_id not in rooms:
             return room_id
+
+
+def _new_bot_name(room: Room) -> str:
+    """生成未占用的机器人昵称 AI-1、AI-2、...(真人占用的编号自动跳过)。"""
+    n = 1
+    while f"AI-{n}" in room.players:
+        n += 1
+    return f"AI-{n}"
 
 
 def _check_name(player_name: str) -> str:
@@ -383,6 +394,7 @@ def _public_player(room: Room, name: str) -> dict:
         "seat": rp.seat,
         "ready": rp.ready,
         "is_host": name == room.host_player_name,
+        "is_bot": rp.is_bot,
         # 仅"连接后掉线"视为离线;从未连接(刚加入/纯 HTTP)不标离线
         "online": room.connected.get(name) is not False,
     }
@@ -742,6 +754,7 @@ async def start_game(
     room.game_state = _create_game_state(list(room.players.keys()), total_rounds)
     room.status = RoomStatus.active
     await _push(room, [("game_started", {"message": "游戏开始,祝你好运!"})])
+    _kick_bot_loop(room)
     return Response(data=_view_for(room, player_name))
 
 
@@ -751,23 +764,12 @@ def _assert_my_turn(game: GameState, player_name: str):
         raise HTTPException(400, "还没轮到你操作")
 
 
-@app.post("/room/action/draw")
-async def draw_from_deck(room_id: str, player_name: str, token: str):
-    room = _get_active_room(room_id)
-    _auth(room, player_name, token)
-    game = room.game_state
-    _assert_my_turn(game, player_name)
-    if game.turn_phase != "acquire":
-        raise HTTPException(400, "本回合已经获取过卡牌,请打出一张手牌")
+def _do_draw(game: GameState, player_name: str) -> str:
+    """共用的抽牌执行(可行性校验由调用方完成)。返回用于消息的后缀。"""
     player = game.players[player_name]
-    if not game.market_deck:
-        raise HTTPException(400, "牌库已空,请从市场拿牌")
     cost = _draw_cost(game, player)
     # 资金不足但市场无牌可拿时,允许免费抽牌(兜底规则,保证手牌始终为 3 张)
     forced_free = cost > 0 and player.money < cost and not _can_take_from_market(game, player)
-    if cost > 0 and player.money < cost and not forced_free:
-        raise HTTPException(400, f"金钱不足,抽牌需要支付 {cost} 元,可尝试从市场拿牌")
-
     card = game.market_deck.pop()
     if not forced_free:
         player.money -= cost
@@ -777,100 +779,28 @@ async def draw_from_deck(room_id: str, player_name: str, token: str):
                 mc.coins_on_top += 1
     player.hand.append(card)
     game.turn_phase = "play"
-
     if forced_free:
-        cost_note = "(资金不足,免费抽牌)"
-    elif cost > 0:
-        cost_note = f"(支付 {cost} 元)"
-    else:
-        cost_note = "(免费)"
-    await _push(
-        room,
-        [
-            (
-                "action",
-                {
-                    "player_id": player_name,
-                    "action": "draw_from_deck",
-                    "message": f"{player_name} 从牌库抽了一张牌{cost_note}",
-                },
-            )
-        ],
-    )
-    return Response(data=_view_for(room, player_name))
+        return "(资金不足,免费抽牌)"
+    return f"(支付 {cost} 元)" if cost > 0 else "(免费)"
 
 
-@app.post("/room/action/take")
-async def take_from_market(room_id: str, player_name: str, token: str, card_index: int):
-    room = _get_active_room(room_id)
-    _auth(room, player_name, token)
-    game = room.game_state
-    _assert_my_turn(game, player_name)
-    if game.turn_phase != "acquire":
-        raise HTTPException(400, "本回合已经获取过卡牌,请打出一张手牌")
-    if card_index < 0 or card_index >= len(game.market_display):
-        raise HTTPException(400, "无效的市场卡牌")
+def _do_take(game: GameState, player_name: str, card_index: int) -> str:
+    """共用的市场拿牌执行(可行性校验由调用方完成)。返回用于消息的后缀。"""
     player = game.players[player_name]
     market_card = game.market_display[card_index]
-    if player.has_antimonopoly[market_card.company]:
-        raise HTTPException(
-            400, f"你持有公司 {market_card.company} 的反垄断标记,不能从市场拿取该公司卡牌"
-        )
-
     player.hand.append(market_card.company)
     player.money += market_card.coins_on_top
     game.market_display.pop(card_index)
     game.took_from_market_company = market_card.company
     game.turn_phase = "play"
-
-    await _push(
-        room,
-        [
-            (
-                "action",
-                {
-                    "player_id": player_name,
-                    "action": "take_from_market",
-                    "message": (
-                        f"{player_name} 从市场拿走公司 {market_card.company} 的卡牌"
-                        + (f"(获得 {market_card.coins_on_top} 元)" if market_card.coins_on_top else "")
-                    ),
-                },
-            )
-        ],
-    )
-    return Response(data=_view_for(room, player_name))
+    return f"(获得 {market_card.coins_on_top} 元)" if market_card.coins_on_top else ""
 
 
-@app.post("/room/action/play")
-async def play_card(
-    room_id: str,
-    player_name: str,
-    token: str,
-    card_company: int,
-    action: Literal["invest", "to_market"],
-):
-    room = _get_active_room(room_id)
-    _auth(room, player_name, token)
-    game = room.game_state
-    _assert_my_turn(game, player_name)
+def _apply_play(
+    room: Room, game: GameState, player_name: str, card_company: int, action: str
+) -> List[tuple]:
+    """共用的出牌执行(可行性校验由调用方完成):打出卡牌并推进回合/结算。"""
     player = game.players[player_name]
-    if card_company not in player.hand:
-        raise HTTPException(400, f"手牌中没有公司 {card_company} 的卡牌")
-    # 牌库非空时抽牌端点必定可行(必要时免费兜底);因此仅当
-    # 牌库已空且市场无牌可拿时,才允许跳过"获取"直接出牌(之后回合即结束)。
-    if game.turn_phase != "play" and (game.market_deck or _can_take_from_market(game, player)):
-        raise HTTPException(400, "请先抽牌或从市场拿牌")
-    if action == "to_market" and player.has_antimonopoly[card_company]:
-        raise HTTPException(
-            400, f"你持有公司 {card_company} 的反垄断标记,不能把该公司卡牌打到市场"
-        )
-    if action == "to_market" and game.took_from_market_company == card_company:
-        raise HTTPException(
-            400,
-            f"公司 {card_company} 的卡牌是你本回合刚从市场拿回的,不能再打到市场,可选择投资或打出其他手牌",
-        )
-
     player.hand.remove(card_company)
     if action == "invest":
         _invest(game, player_name, card_company)
@@ -916,8 +846,230 @@ async def play_card(
         game.current_player_id = player_list[(idx + 1) % len(player_list)]
         game.turn_phase = "acquire"
         game.took_from_market_company = None
+    return events
+
+
+@app.post("/room/action/draw")
+async def draw_from_deck(room_id: str, player_name: str, token: str):
+    room = _get_active_room(room_id)
+    _auth(room, player_name, token)
+    game = room.game_state
+    _assert_my_turn(game, player_name)
+    if game.turn_phase != "acquire":
+        raise HTTPException(400, "本回合已经获取过卡牌,请打出一张手牌")
+    player = game.players[player_name]
+    if not game.market_deck:
+        raise HTTPException(400, "牌库已空,请从市场拿牌")
+    cost = _draw_cost(game, player)
+    # 资金不足但市场无牌可拿时,允许免费抽牌(兜底规则,保证手牌始终为 3 张)
+    forced_free = cost > 0 and player.money < cost and not _can_take_from_market(game, player)
+    if cost > 0 and player.money < cost and not forced_free:
+        raise HTTPException(400, f"金钱不足,抽牌需要支付 {cost} 元,可尝试从市场拿牌")
+
+    cost_note = _do_draw(game, player_name)
+    await _push(
+        room,
+        [
+            (
+                "action",
+                {
+                    "player_id": player_name,
+                    "action": "draw_from_deck",
+                    "message": f"{player_name} 从牌库抽了一张牌{cost_note}",
+                },
+            )
+        ],
+    )
+    return Response(data=_view_for(room, player_name))
+
+
+@app.post("/room/action/take")
+async def take_from_market(room_id: str, player_name: str, token: str, card_index: int):
+    room = _get_active_room(room_id)
+    _auth(room, player_name, token)
+    game = room.game_state
+    _assert_my_turn(game, player_name)
+    if game.turn_phase != "acquire":
+        raise HTTPException(400, "本回合已经获取过卡牌,请打出一张手牌")
+    if card_index < 0 or card_index >= len(game.market_display):
+        raise HTTPException(400, "无效的市场卡牌")
+    player = game.players[player_name]
+    market_card = game.market_display[card_index]
+    if player.has_antimonopoly[market_card.company]:
+        raise HTTPException(
+            400, f"你持有公司 {market_card.company} 的反垄断标记,不能从市场拿取该公司卡牌"
+        )
+
+    coins_note = _do_take(game, player_name, card_index)
+    await _push(
+        room,
+        [
+            (
+                "action",
+                {
+                    "player_id": player_name,
+                    "action": "take_from_market",
+                    "message": (
+                        f"{player_name} 从市场拿走公司 {market_card.company} 的卡牌"
+                        + coins_note
+                    ),
+                },
+            )
+        ],
+    )
+    _kick_bot_loop(room)
+    return Response(data=_view_for(room, player_name))
+
+
+@app.post("/room/action/play")
+async def play_card(
+    room_id: str,
+    player_name: str,
+    token: str,
+    card_company: int,
+    action: Literal["invest", "to_market"],
+):
+    room = _get_active_room(room_id)
+    _auth(room, player_name, token)
+    game = room.game_state
+    _assert_my_turn(game, player_name)
+    player = game.players[player_name]
+    if card_company not in player.hand:
+        raise HTTPException(400, f"手牌中没有公司 {card_company} 的卡牌")
+    # 牌库非空时抽牌端点必定可行(必要时免费兜底);因此仅当
+    # 牌库已空且市场无牌可拿时,才允许跳过"获取"直接出牌(之后回合即结束)。
+    if game.turn_phase != "play" and (game.market_deck or _can_take_from_market(game, player)):
+        raise HTTPException(400, "请先抽牌或从市场拿牌")
+    if action == "to_market" and player.has_antimonopoly[card_company]:
+        raise HTTPException(
+            400, f"你持有公司 {card_company} 的反垄断标记,不能把该公司卡牌打到市场"
+        )
+    if action == "to_market" and game.took_from_market_company == card_company:
+        raise HTTPException(
+            400,
+            f"公司 {card_company} 的卡牌是你本回合刚从市场拿回的,不能再打到市场,可选择投资或打出其他手牌",
+        )
+
+    events = _apply_play(room, game, player_name, card_company, action)
+    await _push(room, events)
+    _kick_bot_loop(room)
+    return Response(data=_view_for(room, player_name))
+
+
+# ====== AI 机器人(服务端代打:只做最简单的摸牌/出牌,无策略) ======
+bot_tasks: Dict[str, asyncio.Task] = {}  # room_id -> 正在运行的机器人回合任务
+
+
+def _alive_and_active(room: Room, game: Optional[GameState], bot_name: str) -> bool:
+    """行动前校验:房间还在、对局进行中、仍轮到该机器人。"""
+    return (
+        rooms.get(room.room_id) is room
+        and room.status is RoomStatus.active
+        and game is not None
+        and game.status == "active"
+        and game.current_player_id == bot_name
+    )
+
+
+async def _bot_move(room: Room, game: GameState, bot_name: str):
+    """机器人的一步:获取阶段优先抽牌(付不起就从市场拿),随后打出第一张手牌投资。
+
+    投资不受反垄断/同回合拿回等限制,永远合法,因此机器人无需任何判断。
+    """
+    player = game.players[bot_name]
+    events: List[tuple] = []
+
+    if game.turn_phase == "acquire":
+        cost = _draw_cost(game, player)
+        can_draw = bool(game.market_deck) and (
+            cost == 0 or player.money >= cost or not _can_take_from_market(game, player)
+        )
+        if can_draw:
+            note = _do_draw(game, bot_name)
+            events.append(
+                (
+                    "action",
+                    {
+                        "player_id": bot_name,
+                        "action": "draw_from_deck",
+                        "message": f"{bot_name} 从牌库抽了一张牌{note}",
+                    },
+                )
+            )
+        elif _can_take_from_market(game, player):
+            card_index = next(
+                i
+                for i, mc in enumerate(game.market_display)
+                if not player.has_antimonopoly[mc.company]
+            )
+            company = game.market_display[card_index].company
+            note = _do_take(game, bot_name, card_index)
+            events.append(
+                (
+                    "action",
+                    {
+                        "player_id": bot_name,
+                        "action": "take_from_market",
+                        "message": f"{bot_name} 从市场拿走公司 {company} 的卡牌{note}",
+                    },
+                )
+            )
+        # 牌库空且市场无牌可拿:跳过获取,直接出牌
+
+    if player.hand:
+        events.extend(_apply_play(room, game, bot_name, player.hand[0], "invest"))
 
     await _push(room, events)
+
+
+async def _bot_loop(room: Room):
+    """依次替每个轮到的机器人行动,直到轮到真人玩家或对局结束。"""
+    try:
+        while True:
+            game = room.game_state
+            bot_name = game.current_player_id if game else None
+            rp = room.players.get(bot_name) if bot_name else None
+            if rp is None or not rp.is_bot or not _alive_and_active(room, game, bot_name):
+                return
+            await asyncio.sleep(BOT_MOVE_DELAY)
+            # 等待期间状态可能已变(对局结束/房间解散/被移出),行动前再校验一次
+            game = room.game_state
+            if not _alive_and_active(room, game, bot_name):
+                return
+            await _bot_move(room, game, bot_name)
+    finally:
+        bot_tasks.pop(room.room_id, None)
+
+
+def _kick_bot_loop(room: Room):
+    """轮到机器人时启动自动行动任务(已有任务在跑则不重复启动)。"""
+    if room.status is not RoomStatus.active or room.game_state is None:
+        return
+    rp = room.players.get(room.game_state.current_player_id)
+    if rp is None or not rp.is_bot:
+        return
+    task = bot_tasks.get(room.room_id)
+    if task is not None and not task.done():
+        return
+    bot_tasks[room.room_id] = asyncio.create_task(_bot_loop(room))
+
+
+@app.post("/room/add_bot")
+async def add_bot(room_id: str, player_name: str, token: str):
+    """房主添加一个 AI 机器人(仅等待期):自动就座并准备,开局后由服务端代打。"""
+    room = _get_room(room_id)
+    _auth(room, player_name, token)
+    if player_name != room.host_player_name:
+        raise HTTPException(403, "只有房主可以添加 AI 机器人")
+    if room.status != RoomStatus.waiting:
+        raise HTTPException(400, "游戏已开始或已结束,无法添加 AI 机器人")
+    if len(room.players) >= room.max_players:
+        raise HTTPException(400, "房间已满")
+    name = _new_bot_name(room)
+    room.players[name] = RoomPlayer(
+        name=name, seat=len(room.players) + 1, token=_new_token(), ready=True, is_bot=True
+    )
+    await _push(room)
     return Response(data=_view_for(room, player_name))
 
 

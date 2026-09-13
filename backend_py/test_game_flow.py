@@ -11,6 +11,7 @@
 - 断线宽限/同名重入令牌复用/房主移出玩家(kick)
 - 对局中掉线:立即广播离线,同名玩家凭昵称+房间号重进恢复座位继续游戏,
   新玩家不能中途加入
+- AI 机器人:房主添加/移出、自动准备、服务端代打直至整局结束
 
 运行: cd backend_py && python3 test_game_flow.py
 """
@@ -248,11 +249,11 @@ def main():
     check(code == 200, "小刚抽牌后上架不受限")
 
     # ---------- 自动对局:轮流 获取->打出(全投资),直到游戏结束 ----------
-    def public_view():
-        _, body = http("GET", f"/room/{room_id}")
+    def public_view(rid=room_id):
+        _, body = http("GET", f"/room/{rid}")
         return body["data"]
 
-    def try_act(name, tok, view):
+    def try_act(name, tok, view, rid=room_id):
         me = next(p for p in view["players"] if p["name"] == name)
         blocked = {int(k) for k, v in (me.get("antimonopoly") or {}).items() if v}
         if view["turn_phase"] == "acquire":
@@ -263,7 +264,7 @@ def main():
                 m["company"] not in blocked for m in view["market"]
             )
             if view["deck_count"] > 0 and (affordable or forced_free):
-                code, _ = http("POST", "/room/action/draw", {"room_id": room_id, "player_name": name, "token": tok})
+                code, _ = http("POST", "/room/action/draw", {"room_id": rid, "player_name": name, "token": tok})
                 if code == 200:
                     return True
             idx = next(
@@ -272,7 +273,7 @@ def main():
             if idx is not None:
                 code, _ = http(
                     "POST", "/room/action/take",
-                    {"room_id": room_id, "player_name": name, "token": tok, "card_index": idx},
+                    {"room_id": rid, "player_name": name, "token": tok, "card_index": idx},
                 )
                 if code == 200:
                     return True
@@ -280,7 +281,7 @@ def main():
         for company in COMPANIES:
             code, body = http(
                 "POST", "/room/action/play",
-                {"room_id": room_id, "player_name": name, "token": tok,
+                {"room_id": rid, "player_name": name, "token": tok,
                  "card_company": company, "action": "invest"},
             )
             if code == 200:
@@ -529,6 +530,105 @@ def main():
     code, _ = http("GET", f"/room/{rid2}")
     check(code == 404, "解散后的房间不存在")
 
+    # ---------- AI 机器人:房主添加 -> 服务端代打 -> 自动对局到结束 ----------
+    code, body = http("POST", "/room/create", {"player_name": "机房东主"})
+    rid7, tok_h7 = body["data"]["room_id"], body["data"]["token"]
+    _, body = http("POST", "/room/join", {"room_id": rid7, "player_name": "真人玩家"})
+    tok_real7 = body["data"]["token"]
+
+    code, _ = http(
+        "POST", "/room/add_bot",
+        {"room_id": rid7, "player_name": "真人玩家", "token": tok_real7},
+    )
+    check(code == 403, "非房主不能添加 AI 机器人")
+
+    bot_listener = WsListener(rid7, "真人玩家", tok_real7)
+    bot_listener.start()
+    time.sleep(0.6)
+
+    code, body = http(
+        "POST", "/room/add_bot",
+        {"room_id": rid7, "player_name": "机房东主", "token": tok_h7},
+    )
+    check(code == 200, "房主添加 AI 机器人")
+    last = body["data"]["players"][-1]
+    check(
+        last["name"] == "AI-1" and last.get("is_bot") is True and last["ready"] is True,
+        "机器人自动命名 AI-1、标记 is_bot 并自动准备",
+    )
+    http("POST", "/room/add_bot", {"room_id": rid7, "player_name": "机房东主", "token": tok_h7})
+    _, body = http("GET", f"/room/{rid7}")
+    names7 = [p["name"] for p in body["data"]["players"]]
+    check(names7 == ["机房东主", "真人玩家", "AI-1", "AI-2"], f"两个机器人按序入座 {names7}")
+    check(
+        all(p.get("online") is not False for p in body["data"]["players"]),
+        "机器人不会被标记为离线(可正常开局)",
+    )
+
+    # 机器人就是普通座位:房主可以移出,再补一个(编号复用)
+    code, _ = http(
+        "POST", "/room/kick",
+        {"room_id": rid7, "player_name": "机房东主", "token": tok_h7, "target_player_name": "AI-2"},
+    )
+    check(code == 200, "房主可以移出 AI 机器人")
+    code, _ = http(
+        "POST", "/room/add_bot", {"room_id": rid7, "player_name": "机房东主", "token": tok_h7}
+    )
+    check(code == 200, "移出后可再次添加机器人")
+    _, body = http("GET", f"/room/{rid7}")
+    check(
+        [p["name"] for p in body["data"]["players"]] == ["机房东主", "真人玩家", "AI-1", "AI-2"],
+        "机器人列表最终为 AI-1/AI-2",
+    )
+
+    # 机器人自动准备,真人玩家仍需自己准备
+    code, _ = http(
+        "POST", "/room/ready", {"room_id": rid7, "player_name": "真人玩家", "token": tok_real7, "ready": True}
+    )
+    check(code == 200, "真人玩家准备")
+    code, body = http(
+        "POST", "/room/start",
+        {"room_id": rid7, "player_name": "机房东主", "token": tok_h7, "total_rounds": 2},
+    )
+    check(code == 200, "机器人自动准备,真人准备后即可开局")
+
+    # 真人玩家(房主+真人)跟随自己的回合操作,机器人由服务端自动代打
+    human_toks7 = {"机房东主": tok_h7, "真人玩家": tok_real7}
+    view7 = public_view(rid7)
+    human_steps, polls = 0, 0
+    while view7.get("game_status") != "game_over" and human_steps < 200 and polls < 3000:
+        polls += 1
+        cur = view7["current_player"]
+        if not cur.startswith("AI-"):
+            if not try_act(cur, human_toks7[cur], view7, rid7):
+                check(False, f"{cur} 的回合无法推进(机器人局)")
+                break
+            human_steps += 1
+        else:
+            time.sleep(0.1)  # 等机器人行动(测试服 BOT_DELAY=0.05s)
+        view7 = public_view(rid7)
+
+    check(
+        view7.get("game_status") == "game_over",
+        f"机器人自动对局直至结束(真人操作 {human_steps} 步)",
+    )
+    time.sleep(0.4)
+    bot_listener.stop()
+
+    bot_actions = [m for m in bot_listener.by_type("action") if m["data"]["player_id"].startswith("AI-")]
+    check(len(bot_actions) > 0, f"机器人共自动执行了 {len(bot_actions)} 步操作")
+    rounds7 = bot_listener.by_type("round_end")
+    overs7 = bot_listener.by_type("game_over")
+    check(len(rounds7) == 2, f"机器人局收到 2 次回合结算(实际 {len(rounds7)})")
+    check(len(overs7) == 1, f"机器人局恰好 1 次游戏结束(实际 {len(overs7)})")
+    if overs7:
+        st7 = overs7[0]["data"]["standings"]
+        check(sum(s["score"] for s in st7) == 4, "机器人局总分守恒(两轮共 4 分)")
+        check(
+            {s["player_id"] for s in st7} == {"机房东主", "真人玩家", "AI-1", "AI-2"},
+            "机器人参与最终排名",
+        )
+
     print()
     if failures:
         print(f"❌ {len(failures)} 项失败:")
@@ -546,7 +646,11 @@ if __name__ == "__main__":
         cwd=".",
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        env={**os.environ, "STARTUPS_DISCONNECT_GRACE": "1"},  # 缩短断线宽限期便于测试
+        env={
+            **os.environ,
+            "STARTUPS_DISCONNECT_GRACE": "1",  # 缩短断线宽限期便于测试
+            "STARTUPS_BOT_DELAY": "0.05",  # 加快机器人行动便于测试
+        },
     )
     try:
         for _ in range(50):

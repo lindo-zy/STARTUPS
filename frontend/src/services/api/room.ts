@@ -79,6 +79,13 @@ export const kickPlayer = (room_id: string, player_name: string, target_player_n
   });
 };
 
+// 添加 AI 机器人(仅房主,仅等待期;开局后由服务端代打)
+export const addBot = (room_id: string, player_name: string) => {
+  return apiClient.post<never, RoomView>("/room/add_bot", null, {
+    params: authParams(room_id, player_name),
+  });
+};
+
 // 获取房间公共信息(不含手牌)
 export const getRoom = (room_id: string) => {
   return apiClient.get<never, RoomView>(`/room/${room_id}`);

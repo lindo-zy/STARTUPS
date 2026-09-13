@@ -30,6 +30,7 @@ import {
   FaGrinStars,
   FaBoxOpen,
   FaRegCircle,
+  FaRobot,
   FaSignOutAlt,
 } from "react-icons/fa";
 import { GiCardDraw } from "react-icons/gi";
@@ -37,6 +38,7 @@ import { InvestmentGrid } from "./components/InvestmentGrid";
 import { COMPANY_COLORS, COMPANIES } from "../../constants/game";
 import CardItem from "./components/CardItem";
 import {
+  addBot,
   drawFromDeck,
   getStoredToken,
   kickPlayer,
@@ -340,9 +342,17 @@ const GamePage: React.FC = () => {
                   borderColor="gray.200"
                 >
                   <HStack spacing={3}>
-                    <Icon as={FaGrinStars} color="blue.400" />
+                    <Icon
+                      as={player.is_bot ? FaRobot : FaGrinStars}
+                      color={player.is_bot ? "purple.400" : "blue.400"}
+                    />
                     <Text fontWeight="medium" color="gray.700">
                       {player.name}
+                      {player.is_bot && (
+                        <Badge ml={2} colorScheme="purple" variant="subtle">
+                          机器人
+                        </Badge>
+                      )}
                       {player.is_host && (
                         <Badge ml={2} colorScheme="green" variant="subtle">
                           房主
@@ -408,6 +418,17 @@ const GamePage: React.FC = () => {
 
           {isHost ? (
             <VStack w="full" spacing={4}>
+              <Button
+                size="sm"
+                colorScheme="purple"
+                variant="outline"
+                w="full"
+                leftIcon={<Icon as={FaRobot} />}
+                isDisabled={players.length >= (view?.max_players ?? 7)}
+                onClick={() => act(() => addBot(roomId, playerName), "添加机器人")}
+              >
+                添加机器人
+              </Button>
               <HStack>
                 <Text color="gray.600" fontSize="sm">
                   游戏轮数
@@ -553,6 +574,11 @@ const GamePage: React.FC = () => {
                   <VStack spacing={0} align={{ base: "flex-start", md: "center" }}>
                     <Text color="gray.700" fontSize="sm" fontWeight="bold">
                       {player.name}
+                      {player.is_bot && (
+                        <Badge ml={1} colorScheme="purple" fontSize="2xs">
+                          机器人
+                        </Badge>
+                      )}
                       {player.online === false && (
                         <Badge ml={1} colorScheme="gray" fontSize="2xs">
                           离线

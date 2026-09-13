@@ -8,6 +8,8 @@ export interface PlayerView {
   seat: number;
   ready: boolean;
   is_host: boolean;
+  /** AI 机器人(服务端代打,自动摸牌出牌) */
+  is_bot?: boolean;
   /** WebSocket 是否在线(断线玩家在宽限期后会被移出房间) */
   online?: boolean;
   money?: number;
