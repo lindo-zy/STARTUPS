@@ -2,6 +2,10 @@
 FROM node:22-alpine AS build
 WORKDIR /app
 
+# 默认走阿里云镜像源,避免访问 registry.npmjs.org 超时;需要时用 --build-arg NPM_REGISTRY=<源地址> 覆盖
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+RUN echo "registry=${NPM_REGISTRY}" > /root/.npmrc
+
 RUN npm install -g pnpm@9
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
