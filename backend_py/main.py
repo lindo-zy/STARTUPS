@@ -956,7 +956,13 @@ async def play_card(
     return Response(data=_view_for(room, player_name))
 
 
-# ====== AI 机器人(服务端代打:只做最简单的摸牌/出牌,无策略) ======
+# ====== AI 机器人(服务端代打) ======
+# 策略围绕结算规则展开:
+#   1) 回合结算时,唯一最大股东向其他小股东收取 3 元/张 -> 努力成为/守住独大,
+#      追平独大者也能废掉其收钱权;在他人独大的公司持股则要赔钱;
+#   2) 金钱排名决定回合加分 -> 利用市场金币、抬高他人抽牌成本来拉开资金差距;
+#   3) 反垄断标记提供免费抽牌与市场保护 -> 开创无人问津的公司、反超抢标记有价值。
+# 只使用公开信息(持股/标记/市场/牌库数/金钱),不读取他人手牌。
 bot_tasks: Dict[str, asyncio.Task] = {}  # room_id -> 正在运行的机器人回合任务
 
 
@@ -971,20 +977,186 @@ def _alive_and_active(room: Room, game: Optional[GameState], bot_name: str) -> b
     )
 
 
-async def _bot_move(room: Room, game: GameState, bot_name: str):
-    """机器人的一步:获取阶段优先抽牌(付不起就从市场拿),随后打出第一张手牌投资。
+def _bot_turns_left(game: GameState) -> int:
+    """回合还剩多少轮行动的粗略估计:牌库剩余 / 玩家数(拿市场牌不消耗牌库)。"""
+    return -(-len(game.market_deck) // max(1, len(game.players)))
 
-    投资不受反垄断/同回合拿回等限制,永远合法,因此机器人无需任何判断。
+
+def _bot_majority_info(game: GameState, player: PlayerState, company: int):
+    """返回 (我的持股, 其他玩家最大持股, 其他最大者人数, 其他持股总和)。"""
+    others = [
+        p.investments[company]
+        for pid, p in game.players.items()
+        if pid != player.player_id
+    ]
+    max_other = max(others, default=0)
+    top_cnt = sum(1 for h in others if h > 0 and h == max_other)
+    return player.investments[company], max_other, top_cnt, sum(others)
+
+
+def _bot_pick_take(game: GameState, player: PlayerState, takeable) -> int:
+    """市场拿牌选择:优先金币多的;并列时挑能帮我追平/反超多数的公司。"""
+    def key(item):
+        _, mc = item
+        my_c, max_other, _, _ = _bot_majority_info(game, player, mc.company)
+        helps = 1 if max_other > 0 and my_c + 1 >= max_other else 0
+        return (mc.coins_on_top, helps)
+
+    return max(takeable, key=key)[0]
+
+
+def _bot_decide_acquire(game: GameState, player: PlayerState):
+    """获取阶段决策:返回 ("draw",) / ("take", 牌索引) / None(跳过获取)。"""
+    cost = _draw_cost(game, player)
+    takeable = [
+        (i, mc)
+        for i, mc in enumerate(game.market_display)
+        if not player.has_antimonopoly[mc.company]
+    ]
+    can_draw = bool(game.market_deck) and (
+        cost == 0 or player.money >= cost or not takeable
+    )
+    if not can_draw:
+        return ("take", _bot_pick_take(game, player, takeable)) if takeable else None
+    if not takeable:
+        return ("draw",)
+
+    best_idx = _bot_pick_take(game, player, takeable)
+    coins = game.market_display[best_idx].coins_on_top
+    deck_left = len(game.market_deck)
+
+    # 推进保险:牌库快见底时必须有人抽牌,否则互相拿市场牌会让回合永远不结束
+    if deck_left <= len(game.players) * 2:
+        if coins >= 3:
+            return ("take", best_idx)
+        return ("draw",)
+    # 白捡高额金币
+    if coins >= 3:
+        return ("take", best_idx)
+    # 抽牌费太高:改拿市场牌,既省钱又收金币
+    if cost >= 3 or (cost >= 2 and coins >= 1):
+        return ("take", best_idx)
+    # 手头紧:能白捡就捡
+    if player.money <= 3 and coins >= 1:
+        return ("take", best_idx)
+    # 拿这张牌能让我在该公司的持股追平/反超多数,顺带收金币
+    company = game.market_display[best_idx].company
+    my_c, max_other, _, _ = _bot_majority_info(game, player, company)
+    if max_other > 0 and my_c + 1 >= max_other and coins >= 1:
+        return ("take", best_idx)
+    return ("draw",)
+
+
+def _bot_pile_flow(game: GameState, company: int, turns_left: int) -> float:
+    """到回合结算时,该公司期望新增的持股总数。
+
+    回合结束时牌库抽空、所有手牌自动投资 => 从现在到结算,
+    该公司新增持股 ≈ (牌库剩余 + 结算时全部手牌) × 该公司牌数占比。
     """
+    remaining = len(game.market_deck) + HAND_SIZE * len(game.players)
+    return remaining * company / float(sum(COMPANIES) - REMOVED_CARDS)
+
+
+def _bot_score_invest(game: GameState, player: PlayerState, company: int, turns_left: int) -> float:
+    """投资该公司这张牌的期望收益(粗略启发式)。
+
+    关键是结算时的堆大小投影:对手领先者到结算的期望持股 leader_proj,
+    以及我自己到结算现实可达的持股 my_reach(手牌存量 + 期望摸进,不虚增)。
+    追不上就坚决不进,避免垫底赔钱。
+    """
+    my_c, max_other, top_cnt, other_sum = _bot_majority_info(game, player, company)
+    my_after = my_c + 1
+    n = len(game.players)
+    flow = _bot_pile_flow(game, company, turns_left)
+    # 对手领先者的期望增量 = 人均增量 + 领先者超出均值的波动
+    per_opp = flow / max(1, n - 1)
+    leader_proj = max_other + per_opp + 1.5 * (per_opp ** 0.5)
+    # 我现实可达 = 现有 + 手里同公司牌 + 之后期望摸进(我会优先打但摸牌看概率)
+    my_reach = my_c + player.hand.count(company) + turns_left * (company / 40.0)
+    score = 0.0
+
+    if max_other == 0:
+        # 无人持股:开创公司拿反垄断标记。人越多盲注对手越多,
+        # 只有当我到结算也守得住领先时,开创才有价值
+        if my_c == 0:
+            viable = flow / max(1, n - 1) + 1.5 * (flow / max(1, n - 1)) ** 0.5 <= my_reach
+            score = 1.6 if viable else 0.2
+        else:
+            score = 0.7 + 0.25 * my_c  # 已独家持股:继续加注巩固领先并抬高反超门槛
+    elif my_after > max_other:
+        # 反超/扩大唯一最大:对手现有持股都是我结算时的收入来源;
+        # 但若领先者后续期望增量会反超我,收益打折。忠诚度让优势公司滚雪球
+        score = 2.4 + 0.25 * other_sum + 0.25 * my_c
+        if leader_proj > my_reach:
+            score = min(score, 1.4) + 0.25 * my_c
+    elif my_after == max_other:
+        # 追平:对方独大时直接废掉其收钱权;结算在即时并列稳稳防赔。
+        # 若领先者还会明显增股甩开我,这个并列守不住
+        if leader_proj > my_reach + 0.5:
+            score = -0.5
+        else:
+            score = (1.8 if top_cnt == 1 else 0.9) + 0.2 * my_c
+            if turns_left <= 1:
+                score += 0.6
+    elif top_cnt == 1:
+        # 仍在唯一独大者之下:每持 1 张结算要赔 3 元。
+        # 手牌足以支撑追平时,垫一张是追击成本;彻底追不上则是纯毒
+        if leader_proj > my_reach + 0.5:
+            score = -2.4 - 0.6 * my_after
+        elif max_other <= my_reach and turns_left >= 1:
+            score = 1.1
+        else:
+            score = -1.6 - 0.6 * my_after
+    else:
+        # 多人并列最大:暂时无人收钱,但会被甩开,谨慎跟注
+        score = 0.3 if leader_proj <= my_reach else -0.8
+    owner = game.antimonopoly_owner[company]
+    if owner not in (None, player.player_id):
+        owner_cnt = game.players[owner].investments[company]
+        if my_after > owner_cnt:
+            score += 0.7  # 反超还能抢走反垄断标记(免费抽牌+市场保护)
+    return score
+
+
+def _bot_score_to_market(game: GameState, player: PlayerState, company: int, turns_left: int) -> float:
+    """把该卡上架到市场的期望收益(粗略启发式)。"""
+    n = len(game.players)
+    # 钱袋效应:此后每次他人抽牌都要为这张公开牌付 1 元,抽干对手资金
+    drain = 0.3 * min(turns_left, 4)
+    # 期望自己下轮拿回时收走累积金币(被他人截胡的概率与人数成正比)
+    take_back = 0.6 * min(turns_left, 3) / max(1, n)
+    # 人越多越容易被截胡;回合将尽(没人再抽牌)时上架等于白白浪费一张牌
+    crowd = 0.08 * max(0, n - 3)
+    waste = 2.5 if turns_left == 0 else 0.0
+    return drain + take_back - 0.6 - crowd - waste
+
+
+def _bot_decide_play(game: GameState, player: PlayerState):
+    """出牌阶段:评估 每张手牌 × {投资, 上架} 的启发式收益,返回最优 (牌, 动作)。"""
+    turns_left = _bot_turns_left(game)
+    best: Optional[tuple] = None
+    best_score = float("-inf")
+    for card in dict.fromkeys(player.hand):  # 去重,同公司牌评估一次即可
+        s = _bot_score_invest(game, player, card, turns_left)
+        if s > best_score:
+            best, best_score = (card, "invest"), s
+        if not player.has_antimonopoly[card] and game.took_from_market_company != card:
+            s = _bot_score_to_market(game, player, card, turns_left)
+            if s > best_score:
+                best, best_score = (card, "to_market"), s
+    return best if best else (player.hand[0], "invest")
+
+
+async def _bot_move(room: Room, game: GameState, bot_name: str):
+    """机器人的一步:先按策略获取(抽牌/拿市场牌),再按策略打出最优手牌。"""
     player = game.players[bot_name]
     events: List[tuple] = []
 
     if game.turn_phase == "acquire":
-        cost = _draw_cost(game, player)
-        can_draw = bool(game.market_deck) and (
-            cost == 0 or player.money >= cost or not _can_take_from_market(game, player)
-        )
-        if can_draw:
+        choice = _bot_decide_acquire(game, player)
+        if choice is None:
+            pass  # 牌库空且市场无牌可拿:跳过获取,直接出牌
+        elif choice[0] == "draw":
             note = _do_draw(game, bot_name)
             events.append(
                 (
@@ -996,12 +1168,8 @@ async def _bot_move(room: Room, game: GameState, bot_name: str):
                     },
                 )
             )
-        elif _can_take_from_market(game, player):
-            card_index = next(
-                i
-                for i, mc in enumerate(game.market_display)
-                if not player.has_antimonopoly[mc.company]
-            )
+        else:
+            card_index = choice[1]
             company = game.market_display[card_index].company
             note = _do_take(game, bot_name, card_index)
             events.append(
@@ -1014,10 +1182,10 @@ async def _bot_move(room: Room, game: GameState, bot_name: str):
                     },
                 )
             )
-        # 牌库空且市场无牌可拿:跳过获取,直接出牌
 
     if player.hand:
-        events.extend(_apply_play(room, game, bot_name, player.hand[0], "invest"))
+        card, action = _bot_decide_play(game, player)
+        events.extend(_apply_play(room, game, bot_name, card, action))
 
     await _push(room, events)
 
