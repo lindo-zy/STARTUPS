@@ -502,6 +502,8 @@ async def websocket_endpoint(
         return
 
     connections.setdefault(room_id, {})[websocket] = player_name
+    # 掉线后重连(此前被标记为离线):注册连接后广播,让其他玩家立即撤下"离线"标记
+    back_online = room.connected.get(player_name) is False
     room.connected[player_name] = True
     # 重连:取消待执行的断线移出
     pending = pending_removals.pop((room_id, player_name), None)
@@ -512,6 +514,8 @@ async def websocket_endpoint(
         await websocket.send_json(
             {"type": "room_state", "data": _view_for(room, player_name)}
         )
+        if back_online:
+            await _push(room)
         while True:
             # 客户端发送任意上行消息(如页面挂载后的 "sync")都会触发
             # 重发当前个性化状态,避免初始推送与监听器挂载之间的竞态丢消息
@@ -533,15 +537,13 @@ async def websocket_endpoint(
         if room is not None and player_name in room.players:
             # 记录该玩家最近一次 WS 在线状态(多开标签页时任一连接存活即在线)
             room.connected[player_name] = _player_online(room_id, player_name)
-            # 等待期玩家断线:进入宽限期,到期仍未重连则自动移出房间(房主则解散房间)
-            if (
-                room.status is RoomStatus.waiting
-                and not room.connected[player_name]
-            ):
-                pending_removals[(room_id, player_name)] = asyncio.create_task(
-                    _delayed_disconnect_leave(room_id, player_name)
-                )
-                # 立即广播"已断开"状态,房主无需等到宽限期结束
+            if not room.connected[player_name]:
+                # 广播"已断开",其他玩家立即看到离线标记(对局中掉线凭昵称+房间号可重进)
+                # 等待期同时进入宽限期,到期仍未重连则自动移出房间(房主则解散房间)
+                if room.status is RoomStatus.waiting:
+                    pending_removals[(room_id, player_name)] = asyncio.create_task(
+                        _delayed_disconnect_leave(room_id, player_name)
+                    )
                 await _push(room)
 
 
@@ -563,20 +565,31 @@ async def create_room(player_name: str):
 async def join_room(room_id: str, player_name: str):
     name = _check_name(player_name)
     room = _get_room(room_id)
-    if room.status != RoomStatus.waiting:
-        raise HTTPException(400, "游戏已开始或已结束,无法加入")
     if name in room.players:
-        if room.connected.get(name) is not False:
-            # 在线,或从未连接过(刚加入、正在握手)——不允许顶替
-            raise HTTPException(400, f"昵称「{name}」已在房间中,请换一个昵称")
-        # 同名玩家确认已断线:允许顶替其座位重新加入。
-        # 复用原令牌而不是换发,避免原客户端(如只是网络抖动、
-        # 或用旧标签页再进)的令牌被静默作废后点任何操作都报
-        # "身份校验失败";两个端持有同一令牌时视为同一座位。
         rp = room.players[name]
-        room.connected.pop(name, None)
+        if room.status is RoomStatus.waiting:
+            if room.connected.get(name) is not False:
+                # 在线,或从未连接过(刚加入、正在握手)——不允许顶替
+                raise HTTPException(400, f"昵称「{name}」已在房间中,请换一个昵称")
+            # 等待期同名玩家确认已断线:允许顶替其座位重新加入。
+            # 复用原令牌而不是换发,避免原客户端(如只是网络抖动、
+            # 或用旧标签页再进)的令牌被静默作废后点任何操作都报
+            # "身份校验失败";两个端持有同一令牌时视为同一座位。
+            room.connected.pop(name, None)
+        else:
+            # 对局进行中/已结束:座位保留,玩家凭"昵称+房间号"即可重进,
+            # 恢复自己的手牌/投资继续游戏(或查看终局),避免一局因掉线卡死。
+            # 在线判定以存活 WS 连接为准;新人仍不能在对局中途加入。
+            if _player_online(room_id, name):
+                raise HTTPException(400, f"昵称「{name}」已在房间中,请换一个昵称")
+        # 若正处于断线宽限期,取消其待执行的自动移出
+        pending = pending_removals.pop((room_id, name), None)
+        if pending is not None:
+            pending.cancel()
         await _push(room)
         return Response(data={"room_id": room.room_id, "token": rp.token, "seat": rp.seat})
+    if room.status != RoomStatus.waiting:
+        raise HTTPException(400, "游戏已开始或已结束,无法加入")
     if len(room.players) >= room.max_players:
         raise HTTPException(400, "房间已满")
     rp = RoomPlayer(name=name, seat=len(room.players) + 1, token=_new_token())

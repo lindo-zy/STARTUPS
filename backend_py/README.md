@@ -29,6 +29,9 @@ python3 test_game_flow.py
 - **断线处理**:等待期玩家 WS 断开后进入宽限期(默认 30 秒,`STARTUPS_DISCONNECT_GRACE` 可调),
   到期仍未重连则自动移出房间并广播;房主断线到期未归则解散房间。已断线(曾连接过)的玩家
   不允许开局,其同名座位可被重新加入顶替(复用原令牌,旧客户端不被顶掉);从未连接过的玩家不受影响。
+  **对局进行中**掉线的玩家座位保留并立即向他人广播"离线";其凭"昵称 + 房间号"即可重新加入,
+  恢复原座位与手牌/投资继续游戏(复用原令牌);新玩家仍不能在对局中途加入。掉线与重连均实时广播,
+  其他玩家的"离线"标记实时更新。
 - **回合结构**:每回合两个阶段——`acquire`(抽牌或拿市场牌)→ `play`(投资/上架),
   手牌始终保持 3 张。牌库抽完且当前玩家出牌后立即结算。
   刚从市场拿回的卡牌同回合不能再次上架(投资或打其他手牌不受限);视图以
@@ -47,7 +50,7 @@ python3 test_game_flow.py
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | POST | `/room/create?player_name=` | 创建房间,返回 `{room_id, token, seat}` |
-| POST | `/room/join?room_id=&player_name=` | 加入房间,返回身份 |
+| POST | `/room/join?room_id=&player_name=` | 加入房间;同名玩家离线时恢复其座位继续游戏(进行中对局同理) |
 | POST | `/room/ready?room_id=&player_name=&token=&ready=` | 准备/取消准备 |
 | POST | `/room/leave?room_id=&player_name=&token=` | 退出(房主退出=解散) |
 | POST | `/room/kick?room_id=&player_name=&token=&target_player_name=` | 房主移出玩家(仅等待期) |

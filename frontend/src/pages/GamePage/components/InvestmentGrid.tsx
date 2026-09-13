@@ -7,11 +7,14 @@ import { COMPANY_COLORS } from "../../../constants/game";
 interface InvestmentGridProps {
   investments: Record<number, number>;
   tokens: number[];
+  /** 卡牌尺寸(rem 基数),手机端可传小值压缩高度 */
+  size?: number;
 }
 
 export const InvestmentGrid: React.FC<InvestmentGridProps> = ({
   investments,
   tokens,
+  size = 4,
 }) => (
   <HStack spacing={1} wrap="wrap" justify="center" maxW="120px">
     {Object.entries(investments).map(([companyStr, count]) => {
@@ -20,7 +23,7 @@ export const InvestmentGrid: React.FC<InvestmentGridProps> = ({
       const hasToken = tokens.includes(company);
       return (
         <VStack key={company} spacing={0} position="relative">
-          <CardItem company={company} size={4} />
+          <CardItem company={company} size={size} />
           <Badge
             position="absolute"
             bottom="-2"

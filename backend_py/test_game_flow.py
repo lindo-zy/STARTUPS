@@ -9,6 +9,8 @@
 - WebSocket 个性化广播不泄露他人手牌/牌库/暗牌
 - 令牌鉴权与回合校验
 - 断线宽限/同名重入令牌复用/房主移出玩家(kick)
+- 对局中掉线:立即广播离线,同名玩家凭昵称+房间号重进恢复座位继续游戏,
+  新玩家不能中途加入
 
 运行: cd backend_py && python3 test_game_flow.py
 """
@@ -393,6 +395,77 @@ def main():
     time.sleep(0.6)
     jitter_listener2.stop()
     http("POST", "/room/delete", {"room_id": rid5, "player_name": "重连房主", "token": tok_h5})
+
+    # ---------- 对局中掉线重连:同名+同房间号恢复座位继续游戏 ----------
+    code, body = http("POST", "/room/create", {"player_name": "房主甲"})
+    rid6, tok_h6 = body["data"]["room_id"], body["data"]["token"]
+    _, body = http("POST", "/room/join", {"room_id": rid6, "player_name": "玩家乙"})
+    tok_b6 = body["data"]["token"]
+    _, body = http("POST", "/room/join", {"room_id": rid6, "player_name": "玩家丙"})
+    tok_c6 = body["data"]["token"]
+    http("POST", "/room/ready", {"room_id": rid6, "player_name": "玩家乙", "token": tok_b6, "ready": True})
+    http("POST", "/room/ready", {"room_id": rid6, "player_name": "玩家丙", "token": tok_c6, "ready": True})
+
+    lis_h6 = WsListener(rid6, "房主甲", tok_h6)
+    lis_b6 = WsListener(rid6, "玩家乙", tok_b6)
+    lis_h6.start()
+    lis_b6.start()
+    time.sleep(0.6)
+    code, body = http(
+        "POST", "/room/start",
+        {"room_id": rid6, "player_name": "房主甲", "token": tok_h6, "total_rounds": 2},
+    )
+    check(code == 200, "对局重连场景:游戏开始")
+
+    # 玩家丙从未连接过 WS(纯 HTTP 准备),对局中凭昵称+房间号加入补位
+    code, body = http("POST", "/room/join", {"room_id": rid6, "player_name": "玩家丙"})
+    check(code == 200, "对局进行中,掉线(未连接)的同名玩家可加入继续游戏")
+    check(body["data"]["token"] == tok_c6, "对局中重入复用原令牌,旧客户端不失效")
+    check(body["data"]["seat"] == 3, "重入座位不变")
+
+    code, body = http("POST", "/room/join", {"room_id": rid6, "player_name": "路人丁"})
+    check(code == 400, "对局进行中新玩家不能加入")
+    code, body = http("POST", "/room/join", {"room_id": rid6, "player_name": "玩家乙"})
+    check(code == 400, "对局进行中在线玩家同名加入被拒绝")
+
+    # 玩家乙掉线:其他人立即收到 offline 标记
+    lis_b6.stop()
+    time.sleep(0.4)
+    _, body = http("GET", f"/room/{rid6}")
+    who = {p["name"]: p for p in body["data"]["players"]}
+    check(who["玩家乙"].get("online") is False, "对局中掉线立即广播 offline")
+
+    # 掉线的玩家乙凭昵称+房间号重进,座位/令牌不变
+    code, body = http("POST", "/room/join", {"room_id": rid6, "player_name": "玩家乙"})
+    check(code == 200 and body["data"]["token"] == tok_b6, "对局中掉线玩家可凭昵称+房间号重进")
+    lis_b6b = WsListener(rid6, "玩家乙", tok_b6)
+    lis_b6b.start()
+    time.sleep(0.6)
+    states = lis_b6b.by_type("room_state")
+    mine = states[-1]["data"]["players"] if states else []
+    hand_ok = next((p for p in mine if p["name"] == "玩家乙"), {}).get("hand")
+    check(bool(hand_ok), "重进后 WS 恢复,能拿到自己的手牌继续游戏")
+    _, body = http("GET", f"/room/{rid6}")
+    who = {p["name"]: p for p in body["data"]["players"]}
+    check(who["玩家乙"].get("online") is not False, "重连后恢复在线标记")
+
+    # 重进后的玩家乙能继续正常操作:房主甲先走完一手,再轮到玩家乙抽牌
+    code, body = http("POST", "/room/action/draw", {"room_id": rid6, "player_name": "房主甲", "token": tok_h6})
+    check(code == 200, "房主甲抽牌进入出牌阶段")
+    hand_a6 = next(p for p in body["data"]["players"] if p["name"] == "房主甲")["hand"]
+    code, _ = http(
+        "POST", "/room/action/play",
+        {"room_id": rid6, "player_name": "房主甲", "token": tok_h6,
+         "card_company": hand_a6[0], "action": "invest"},
+    )
+    check(code == 200, "房主甲投资一手,轮到玩家乙")
+    code, _ = http(
+        "POST", "/room/action/draw", {"room_id": rid6, "player_name": "玩家乙", "token": tok_b6},
+    )
+    check(code == 200, "重进后的玩家乙可正常操作(抽牌)")
+
+    for l in (lis_h6, lis_b6b):
+        l.stop()
 
     # ---------- 房主移出玩家(kick) ----------
     code, body = http("POST", "/room/create", {"player_name": "踢人房主"})

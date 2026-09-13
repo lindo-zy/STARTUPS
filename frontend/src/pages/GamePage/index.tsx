@@ -85,9 +85,11 @@ const GamePage: React.FC = () => {
   const [totalRounds, setTotalRounds] = useState(2);
   const [selectedHandIdx, setSelectedHandIdx] = useState<number | null>(null);
 
-  // 响应式卡牌尺寸(手机端缩小)
-  const handCardSize = useBreakpointValue({ base: 9, md: 12 }) ?? 12;
-  const marketCardSize = useBreakpointValue({ base: 8, md: 10 }) ?? 10;
+  // 响应式卡牌尺寸(手机端整体缩小,保证一屏放下手牌)
+  const handCardSize = useBreakpointValue({ base: 8, md: 12 }) ?? 12;
+  const marketCardSize = useBreakpointValue({ base: 7, md: 10 }) ?? 10;
+  const investCardSize = useBreakpointValue({ base: 4, md: 8 }) ?? 8;
+  const opponentCardSize = useBreakpointValue({ base: 3.5, md: 4 }) ?? 4;
 
   // 连接管理:进入页面时确保 WS 连接(connect 内部按 URL/状态去重,重复调用安全),
   // 离开页面时断开——服务端按"断线宽限"移出玩家,刷新场景会在重连时取消移出。
@@ -170,6 +172,20 @@ const GamePage: React.FC = () => {
       }
     };
     socket.addEventListener("message", onMessage);
+    // WS 被服务端以 1008 关闭:身份校验失败或已不在房间(被移出/房间已解散)。
+    // 留在页面只会停在"连接中",提示后退回大厅,便于重新加入。
+    const onClose = (event: CloseEvent) => {
+      if (event.code === 1008) {
+        toast({
+          title: "连接已失效,请重新加入房间",
+          status: "warning",
+          duration: 2500,
+          position: "top",
+        });
+        navigate("/");
+      }
+    };
+    socket.addEventListener("close", onClose);
     // 请求服务端重发当前状态:WS 握手后服务端的首次推送
     // 可能早于本监听器挂载,靠主动 sync 弥补(连接中则延迟重试一次)
     const sync = () => {
@@ -180,6 +196,7 @@ const GamePage: React.FC = () => {
     return () => {
       clearTimeout(retryTimer);
       socket.removeEventListener("message", onMessage);
+      socket.removeEventListener("close", onClose);
     };
   }, [socket, toast, navigate, disconnect, playerName]);
 
@@ -197,6 +214,10 @@ const GamePage: React.FC = () => {
   useEffect(() => {
     setSelectedHandIdx(null);
   }, [view?.turn_phase, view?.current_player, handLen]);
+
+  // 手牌较多时逐张加大重叠度,保证手机宽度内不溢出
+  const handSpacingBase =
+    handLen <= 4 ? "-24px" : `${Math.max(-56, -24 - (handLen - 4) * 12)}px`;
 
   const blockedCompanies = useMemo(
     () =>
@@ -458,9 +479,16 @@ const GamePage: React.FC = () => {
     COMPANIES.filter((c) => p.antimonopoly?.[String(c)]);
 
   return (
-    <Box minH="100vh" bg="gray.50" display="flex" flexDirection="column" overflow="hidden">
+    // 手机端锁定为一屏高度(dvh 随浏览器工具栏伸缩),各区压缩尺寸,免滚动看全手牌
+    <Box
+      h={{ base: "100dvh", md: "100vh" }}
+      bg="gray.50"
+      display="flex"
+      flexDirection="column"
+      overflow="hidden"
+    >
       {/* 1. 顶部栏 */}
-      <Flex bg="white" p={2} justify="space-between" align="center" boxShadow="sm">
+      <Flex bg="white" p={{ base: 1.5, md: 2 }} justify="space-between" align="center" boxShadow="sm">
         <HStack>
           <Text color="gray.800" fontWeight="bold">
             Room: {roomId}
@@ -483,22 +511,22 @@ const GamePage: React.FC = () => {
       </Flex>
 
       {/* 回合提示条 */}
-      <Center py={2} bg={myTurn ? "yellow.100" : "gray.100"}>
-        <Text fontWeight="bold" color={myTurn ? "yellow.700" : "gray.500"} fontSize="sm">
+      <Center py={{ base: 1, md: 2 }} bg={myTurn ? "yellow.100" : "gray.100"} px={2}>
+        <Text fontWeight="bold" color={myTurn ? "yellow.700" : "gray.500"} fontSize={{ base: "xs", md: "sm" }}>
           {turnHint}
         </Text>
       </Center>
 
       {/* 2. 游戏主区域 */}
-      <Flex flex={1} position="relative" p={{ base: 2, md: 4 }} direction="column" overflow="auto">
+      <Flex flex={1} minH={0} position="relative" p={{ base: 1.5, md: 4 }} direction="column" overflow="auto">
         {/* 对手区域(手机端横向滑动) */}
         <Flex
           justify={{ base: "flex-start", md: "center" }}
-          gap={{ base: 3, md: 6 }}
-          mb={{ base: 4, md: 8 }}
+          gap={{ base: 2, md: 6 }}
+          mb={{ base: 2, md: 8 }}
           wrap="nowrap"
           overflowX="auto"
-          pb={2}
+          pb={1}
           sx={{
             scrollbarWidth: "none",
             "&::-webkit-scrollbar": { display: "none" },
@@ -510,83 +538,102 @@ const GamePage: React.FC = () => {
               <VStack
                 key={player.name}
                 bg="white"
-                p={{ base: 3, md: 5 }}
+                p={{ base: 2, md: 5 }}
                 borderRadius="md"
                 borderWidth={active ? 2 : 0}
                 borderColor={active ? "yellow.400" : "white"}
                 boxShadow={active ? "lg" : "sm"}
-                spacing={2}
-                minW={{ base: "108px", md: "130px" }}
+                spacing={{ base: 0, md: 2 }}
+                minW={{ base: "150px", md: "130px" }}
                 flexShrink={0}
+                justify="center"
               >
-                <VStack spacing={0} align="center">
-                  <Text color="gray.700" fontSize="sm" fontWeight="bold">
-                    {player.name}
-                    {player.online === false && (
-                      <Badge ml={1} colorScheme="gray" fontSize="2xs">
-                        离线
+                {/* 手机端信息与投资并排压低高度,桌面端保持纵向 */}
+                <Flex direction={{ base: "row", md: "column" }} align="center" gap={{ base: 3, md: 2 }}>
+                  <VStack spacing={0} align={{ base: "flex-start", md: "center" }}>
+                    <Text color="gray.700" fontSize="sm" fontWeight="bold">
+                      {player.name}
+                      {player.online === false && (
+                        <Badge ml={1} colorScheme="gray" fontSize="2xs">
+                          离线
+                        </Badge>
+                      )}
+                      {active && (
+                        <Badge ml={1} colorScheme="yellow" fontSize="2xs" variant="solid">
+                          行动中
+                        </Badge>
+                      )}
+                    </Text>
+                    <HStack spacing={{ base: 2, md: 3 }}>
+                      <HStack spacing={1} align="center">
+                        <Icon as={FaCoins} color="yellow.500" boxSize={3} />
+                        <Text fontSize="xs" color="yellow.600" fontWeight="bold">
+                          {player.money ?? 0}
+                        </Text>
+                      </HStack>
+                      <Badge colorScheme="blue" fontSize="2xs">
+                        {player.score ?? 0} 分
                       </Badge>
-                    )}
-                    {active && (
-                      <Badge ml={1} colorScheme="yellow" fontSize="2xs" variant="solid">
-                        行动中
+                      <Badge fontSize="2xs" color="gray.500">
+                        手牌 {player.hand_count ?? 0}
                       </Badge>
-                    )}
-                  </Text>
-                  <HStack spacing={3}>
-                    <HStack spacing={1} align="center">
-                      <Icon as={FaCoins} color="yellow.500" boxSize={3} />
-                      <Text fontSize="xs" color="yellow.600" fontWeight="bold">
-                        {player.money ?? 0}
-                      </Text>
                     </HStack>
-                    <Badge colorScheme="blue" fontSize="2xs">
-                      {player.score ?? 0} 分
-                    </Badge>
-                    <Badge fontSize="2xs" color="gray.500">
-                      手牌 {player.hand_count ?? 0}
-                    </Badge>
-                  </HStack>
-                </VStack>
-                {/* 对手投资情况 */}
-                <InvestmentGrid
-                  investments={(player.investments ?? {}) as never}
-                  tokens={renderTokens(player)}
-                />
+                  </VStack>
+                  {/* 对手投资情况 */}
+                  <InvestmentGrid
+                    investments={(player.investments ?? {}) as never}
+                    tokens={renderTokens(player)}
+                    size={opponentCardSize}
+                  />
+                </Flex>
               </VStack>
             );
           })}
         </Flex>
 
         {/* 中央桌面 (市场 & 牌堆) */}
-        <Flex flex={1} justify="center" align="center" direction="column" gap={{ base: 4, md: 8 }}>
-          <HStack spacing={{ base: 4, md: 12 }} align="center" wrap="wrap" justify="center">
+        <Flex
+          flex={1}
+          minH={0}
+          justify="center"
+          align="center"
+          direction="column"
+          gap={{ base: 2, md: 8 }}
+          py={{ base: 1, md: 0 }}
+        >
+          <HStack
+            spacing={{ base: 3, md: 12 }}
+            align="center"
+            wrap="wrap"
+            justify="center"
+            w={{ base: "full", md: "auto" }}
+          >
             {/* 牌堆 */}
             <VStack>
               <Box
-                w={{ base: "20", md: "28" }}
-                h={{ base: "28", md: "40" }}
+                w={{ base: "14", md: "28" }}
+                h={{ base: "20", md: "40" }}
                 bg="blue.700"
                 borderRadius="lg"
-                borderWidth={4}
+                borderWidth={{ base: 2, md: 4 }}
                 borderColor="white"
                 boxShadow="xl"
                 position="relative"
                 transition="all 0.2s"
               >
                 <Center h="full">
-                  <Icon as={GiCardDraw} boxSize={{ base: 12, md: 16 }} color="whiteAlpha.800" />
+                  <Icon as={GiCardDraw} boxSize={{ base: 8, md: 16 }} color="whiteAlpha.800" />
                 </Center>
                 <Badge
                   position="absolute"
-                  top="-3"
-                  right="-3"
+                  top="-2"
+                  right="-2"
                   bg="red.500"
                   color="white"
-                  fontSize="lg"
+                  fontSize={{ base: "sm", md: "lg" }}
                   borderRadius="full"
-                  w={8}
-                  h={8}
+                  w={{ base: 6, md: 8 }}
+                  h={{ base: 6, md: 8 }}
                   display="flex"
                   alignItems="center"
                   justifyContent="center"
@@ -616,9 +663,9 @@ const GamePage: React.FC = () => {
               </Tooltip>
             </VStack>
 
-            {/* 市场 */}
+            {/* 市场(手机端单行横向滑动,避免换行挤压布局) */}
             <HStack
-              p={{ base: 3, md: 6 }}
+              p={{ base: 2, md: 6 }}
               bg="white"
               borderRadius="3xl"
               boxShadow="lg"
@@ -626,15 +673,22 @@ const GamePage: React.FC = () => {
               borderColor="gray.200"
               borderStyle="solid"
               w={{ base: "full", md: "auto" }}
-              minH={{ base: "130px", md: "200px" }}
-              justify="center"
-              wrap="wrap"
+              minW={0}
+              minH={{ base: "96px", md: "200px" }}
+              justify={{ base: "flex-start", md: "center" }}
+              wrap={{ base: "nowrap", md: "wrap" }}
               gap={{ base: 2, md: 4 }}
+              overflowX={{ base: "auto", md: "visible" }}
+              sx={{
+                scrollbarWidth: "none",
+                "&::-webkit-scrollbar": { display: "none" },
+                "& > *": { flexShrink: 0 },
+              }}
             >
               {market.length === 0 && (
                 <VStack spacing={1}>
-                  <Icon as={FaBoxOpen} boxSize={8} color="gray.300" />
-                  <Text color="gray.400" fontSize="sm">
+                  <Icon as={FaBoxOpen} boxSize={{ base: 5, md: 8 }} color="gray.300" />
+                  <Text color="gray.400" fontSize={{ base: "xs", md: "sm" }}>
                     市场空空如也
                   </Text>
                 </VStack>
@@ -670,14 +724,14 @@ const GamePage: React.FC = () => {
                         {card.coins_on_top > 0 && (
                           <Badge
                             position="absolute"
-                            height="2.5rem"
-                            width="2.5rem"
+                            height={{ base: "1.75rem", md: "2.5rem" }}
+                            width={{ base: "1.75rem", md: "2.5rem" }}
                             top="-2"
                             right="-2"
                             bg="yellow.400"
-                            fontSize="large"
+                            fontSize={{ base: "sm", md: "large" }}
                             borderRadius="full"
-                            p={5}
+                            p={0}
                             boxShadow="md"
                             display="flex"
                             alignItems="center"
@@ -702,37 +756,37 @@ const GamePage: React.FC = () => {
           mt="auto"
           bg="white"
           borderTopRadius="3xl"
-          p={{ base: 3, md: 6 }}
-          gap={{ base: 3, md: 8 }}
+          p={{ base: 2, md: 6 }}
+          gap={{ base: 2, md: 8 }}
           align={{ base: "center", md: "end" }}
           justify="center"
           direction={{ base: "column", md: "row" }}
           boxShadow="0 -4px 20px rgba(0,0,0,0.05)"
         >
           {/* 我的状态与投资 */}
-          <VStack align={{ base: "center", md: "start" }} spacing={4} flex={1} w={{ base: "full", md: "auto" }}>
+          <VStack align={{ base: "center", md: "start" }} spacing={{ base: 1, md: 4 }} flex={1} w={{ base: "full", md: "auto" }}>
             <VStack align={{ base: "center", md: "start" }} spacing={0}>
-              <Text color="gray.800" fontWeight="bold" fontSize="xl">
+              <Text color="gray.800" fontWeight="bold" fontSize={{ base: "md", md: "xl" }}>
                 我 ({playerName})
               </Text>
-              <HStack spacing={3}>
+              <HStack spacing={{ base: 2, md: 3 }}>
                 <HStack>
-                  <Icon as={FaCoins} color="yellow.500" boxSize={5} />
-                  <Text color="yellow.600" fontSize="lg" fontWeight="bold">
+                  <Icon as={FaCoins} color="yellow.500" boxSize={{ base: 4, md: 5 }} />
+                  <Text color="yellow.600" fontSize={{ base: "sm", md: "lg" }} fontWeight="bold">
                     {me?.money ?? 0} 金币
                   </Text>
                 </HStack>
-                <Badge colorScheme="blue" fontSize="sm">
+                <Badge colorScheme="blue" fontSize={{ base: "xs", md: "sm" }}>
                   {me?.score ?? 0} 分
                 </Badge>
               </HStack>
             </VStack>
 
-            <Box w="full" bg="gray.50" p={3} borderRadius="xl" borderWidth={1} borderColor="gray.100">
-              <Text color="gray.500" fontSize="xs" mb={2}>
+            <Box w="full" bg="gray.50" p={{ base: 1.5, md: 3 }} borderRadius="xl" borderWidth={1} borderColor="gray.100">
+              <Text color="gray.500" fontSize={{ base: "2xs", md: "xs" }} mb={{ base: 1, md: 2 }}>
                 我的投资(已打出)
               </Text>
-              <HStack spacing={4} overflowX="auto">
+              <HStack spacing={{ base: 2, md: 4 }} pb={2} overflowX="auto">
                 {COMPANIES.map((company) => {
                   const count = me?.investments?.[String(company)] ?? 0;
                   const hasToken = blockedCompanies.has(company);
@@ -743,7 +797,7 @@ const GamePage: React.FC = () => {
                       position="relative"
                       wrap={"wrap"}
                     >
-                      <CardItem company={company} size={8} />
+                      <CardItem company={company} size={investCardSize} />
                       {count > 0 && (
                         <Badge
                           position="absolute"
@@ -792,7 +846,7 @@ const GamePage: React.FC = () => {
                   : "点击\"持股\"或\"上架\""}
               </Text>
             )}
-            <HStack spacing={{ base: -8, md: -12 }}>
+            <HStack spacing={{ base: handSpacingBase, md: "-12" }}>
               {(me?.hand ?? []).map((companyId, idx) => {
                 const playAllowed = canPlay;
                 const justTaken = view?.took_from_market_company === companyId;
