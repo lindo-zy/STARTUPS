@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSocket } from "../../context/SocketContext";
 import {
@@ -105,6 +105,24 @@ const GamePage: React.FC = () => {
     [toast],
   );
 
+  // 广播条:服务端行动广播单条滚动播出——新消息从上滑入直接顶替旧消息,数秒后自动隐藏。
+  // 不用 toast 叠放:Chakra 同 id notify 只前插不互斥,机器人连续操作时会叠成一列盖住牌桌
+  const [broadcast, setBroadcast] = useState<{
+    key: number;
+    text: string;
+    scheme: string;
+  } | null>(null);
+  const broadcastSeq = useRef(0);
+  const broadcastHideTimer = useRef<number | undefined>(undefined);
+  const announce = useCallback((text: string, tone: "info" | "success" | "warning" = "info") => {
+    const scheme = { info: "blue", success: "green", warning: "orange" }[tone];
+    broadcastSeq.current += 1;
+    setBroadcast({ key: broadcastSeq.current, text, scheme });
+    window.clearTimeout(broadcastHideTimer.current);
+    broadcastHideTimer.current = window.setTimeout(() => setBroadcast(null), 3000);
+  }, []);
+  useEffect(() => () => window.clearTimeout(broadcastHideTimer.current), []);
+
   // 房间/身份信息:仅在页面挂载时读取一次,
   // 避免会话中途被其它标签页写入的存储值悄悄改变身份。
   // 身份存 sessionStorage(标签页隔离),多开标签页互不干扰
@@ -166,12 +184,12 @@ const GamePage: React.FC = () => {
           break;
         }
         case "game_started":
-          notify((msg.data as { message?: string }).message || "游戏开始!", "success", "ws-info");
+          announce((msg.data as { message?: string }).message || "游戏开始!", "success");
           break;
         case "action": {
           const data = msg.data as { player_id: string; message: string };
           if (data.player_id !== playerName) {
-            notify(data.message, "info", "ws-action");
+            announce(data.message);
           }
           break;
         }
@@ -218,7 +236,7 @@ const GamePage: React.FC = () => {
       socket.removeEventListener("message", onMessage);
       socket.removeEventListener("close", onClose);
     };
-  }, [socket, notify, navigate, disconnect, playerName]);
+  }, [socket, notify, announce, navigate, disconnect, playerName]);
 
   // ====== 派生状态 ======
   const isWaiting = !view || view.status === "waiting";
@@ -732,6 +750,38 @@ const GamePage: React.FC = () => {
 
       {/* 2. 游戏主区域 */}
       <Flex flex={1} minH={0} position="relative" p={{ base: 1.5, md: 4 }} direction="column" overflow="auto">
+        {/* 广播消息:悬浮于牌桌上方单条滚动播出,新消息滑入顶替旧消息,不堆叠、不拦截点击 */}
+        <Box
+          position="absolute"
+          top={{ base: 1, md: 2 }}
+          left={0}
+          right={0}
+          zIndex={20}
+          display="flex"
+          justifyContent="center"
+          px={{ base: 2, md: 4 }}
+          pointerEvents="none"
+        >
+          {broadcast && (
+            <Box
+              key={broadcast.key}
+              className="broadcast-roll"
+              px={{ base: 3, md: 4 }}
+              py={{ base: 1, md: 1.5 }}
+              borderRadius="md"
+              bg={`${broadcast.scheme}.500`}
+              color="white"
+              fontSize={{ base: "2xs", md: "xs" }}
+              fontWeight="medium"
+              boxShadow="md"
+              maxW={{ base: "86vw", md: "sm" }}
+              noOfLines={1}
+            >
+              {broadcast.text}
+            </Box>
+          )}
+        </Box>
+
         {/* 对手环绕牌桌:手机端按人数环形对称分布(左右列+居中上排),市场整行贴底,
             省出的纵向空间给牌桌和手牌;桌面端对手一行+下方牌桌 */}
         <Box
@@ -995,17 +1045,21 @@ const GamePage: React.FC = () => {
                       {hasToken && (
                         <Box
                           position="absolute"
-                          top="2"
-                          right="2"
+                          top="-1"
+                          right="-1"
                           zIndex={1}
                           bg="white"
                           borderWidth={1}
                           borderRadius="full"
                           boxShadow="sm"
-                          p={0.5}
+                          p={{ base: 0.25, md: 0.5 }}
                           display="flex"
                         >
-                          <Icon as={FaGrinStars} color={COMPANY_COLORS[company]} boxSize={"1.2rem"} />
+                          <Icon
+                            as={FaGrinStars}
+                            color={COMPANY_COLORS[company]}
+                            boxSize={{ base: "0.6rem", md: "1rem" }}
+                          />
                         </Box>
                       )}
                     </VStack>

@@ -356,19 +356,14 @@ def _advance_after_round(room: Room, game: GameState) -> bool:
         game.status = "game_over"
         room.status = RoomStatus.finished
         return False
-    # 下一轮:重建牌库(同样移除开局那 5 张),重新发 3 张手牌;
-    # 投资组合、金钱、分数跨轮保留。
-    deck = _shuffle_deck()
-    for card in game.removed_cards:
-        deck.remove(card)
-    game.market_deck = deck
-    game.market_display = []
-    for player in game.players.values():
-        player.hand = [deck.pop() for _ in range(HAND_SIZE)]
-    game.round_number += 1
-    game.current_player_id = list(game.players.keys())[0]
-    game.turn_phase = "acquire"
-    game.took_from_market_company = None
+    # 每轮完全重置:重建牌库(移除的卡牌重新随机)、市场清空、投资与反垄断标记清零、
+    # 金钱回初始值;仅积分跨轮累计,手牌从新牌库重新发放。
+    scores = {pid: p.score for pid, p in game.players.items()}
+    fresh = _create_game_state(list(game.players.keys()), game.total_rounds)
+    for pid, p in fresh.players.items():
+        p.score = scores[pid]
+    fresh.round_number = game.round_number + 1
+    room.game_state = fresh
     return True
 
 

@@ -1,3 +1,18 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* 游戏页广播消息:新消息从上方滑入(单条顶替,不堆叠) */
+@keyframes broadcast-roll-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.broadcast-roll {
+  animation: broadcast-roll-in 0.25s ease-out;
+}
