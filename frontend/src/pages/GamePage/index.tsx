@@ -87,8 +87,8 @@ const GamePage: React.FC = () => {
   const [totalRounds, setTotalRounds] = useState(2);
   const [selectedHandIdx, setSelectedHandIdx] = useState<number | null>(null);
 
-  // 响应式卡牌尺寸(手机端整体缩小,保证一屏放下手牌)
-  const handCardSize = useBreakpointValue({ base: 8, md: 10 }) ?? 10;
+  // 响应式卡牌尺寸(手机端整体缩小,保证一屏放下手牌;再缩一档给环绕对手区留高度)
+  const handCardSize = useBreakpointValue({ base: 7, md: 10 }) ?? 10;
   // 市场与我的投资卡牌整体偏小一档,降低屏幕占比,给手牌和对手区留空间
   const marketCardSize = useBreakpointValue({ base: 5, md: 8 }) ?? 8;
   const investCardSize = useBreakpointValue({ base: 3, md: 5 }) ?? 5;
@@ -501,6 +501,44 @@ const GamePage: React.FC = () => {
   const renderTokens = (p: PlayerView) =>
     COMPANIES.filter((c) => p.antimonopoly?.[String(c)]);
 
+  // ====== 对手环绕牌桌布局(手机端)======
+  // ≤4 个对手:全部左右分列(左列可多 1 个);超过 4 个:上排 3 个,其余进左右列。
+  // 某侧只有 1 个对手而侧行有 2 行时,该侧区域跨两行,卡牌保持垂直居中。
+  const oppCount = opponents.length;
+  const topRow = oppCount > 4 ? opponents.slice(0, 3) : [];
+  const sidePlayers = oppCount > 4 ? opponents.slice(3) : opponents;
+  const leftCol = sidePlayers.slice(0, Math.ceil(sidePlayers.length / 2));
+  const rightCol = sidePlayers.slice(Math.ceil(sidePlayers.length / 2));
+  const sideRows = Math.max(leftCol.length, rightCol.length, 1);
+  const sideArea = (list: PlayerView[], letter: string, row: number) =>
+    list.length === 1 && sideRows === 2 ? `${letter}0` : `${letter}${row}`;
+  const mobileAreaRows: string[] = [];
+  if (topRow.length > 0) mobileAreaRows.push('"t0 t1 t2"');
+  for (let r = 0; r < sideRows; r++) {
+    mobileAreaRows.push(`"${sideArea(leftCol, "l", r)} c ${sideArea(rightCol, "r", r)}"`);
+  }
+  mobileAreaRows.push('"m m m"');
+  const mobileAreas = mobileAreaRows.join(" ");
+  const mobileGridRows = [
+    ...(topRow.length > 0 ? ["auto"] : []),
+    ...Array.from({ length: sideRows }, () => "1fr"),
+    "auto",
+  ].join(" ");
+  // 每个对手的手机端网格区域(桌面端统一 o0..o5 一行排开)
+  const opponentAreas = new Map<string, string>();
+  topRow.forEach((p, i) => opponentAreas.set(p.name, `t${i}`));
+  leftCol.forEach((p, i) => opponentAreas.set(p.name, sideArea(leftCol, "l", i)));
+  rightCol.forEach((p, i) => opponentAreas.set(p.name, sideArea(rightCol, "r", i)));
+  // 桌面端复用同一网格:对手一行,下方牌堆占左半、市场占右半
+  const desktopCols = Math.max(oppCount, 1);
+  const desktopAreas = [
+    ...(oppCount > 0 ? [`"${opponents.map((_, i) => `o${i}`).join(" ")}"`] : []),
+    `"${Array.from({ length: Math.ceil(desktopCols / 2) }, () => "c").join(" ")} ${Array.from(
+      { length: Math.floor(desktopCols / 2) },
+      () => "m",
+    ).join(" ")}"`,
+  ].join(" ");
+
   return (
     // 手机端锁定为一屏高度(dvh 随浏览器工具栏伸缩),各区压缩尺寸,免滚动看全手牌
     <Box
@@ -542,26 +580,26 @@ const GamePage: React.FC = () => {
 
       {/* 2. 游戏主区域 */}
       <Flex flex={1} minH={0} position="relative" p={{ base: 1.5, md: 4 }} direction="column" overflow="auto">
-        {/* 对手区域:手机端 3 列换行网格,7 人局一屏看全 6 家持股;桌面端横向一行居中 */}
-        <Flex
-          justify="flex-start"
-          mb={{ base: 1, md: 4 }}
-          overflowX={{ base: "hidden", md: "auto" }}
-          pb={1}
-          flexShrink={0}
+        {/* 对手环绕牌桌:手机端 ≤4 人左右分列、>4 人上排 3 个+其余左右列,
+            市场整行贴底,省出的纵向空间给牌桌和手牌;桌面端对手一行+下方牌桌 */}
+        <Box
+          flex={1}
+          minH={0}
+          w="full"
           sx={{
-            scrollbarWidth: "none",
-            "&::-webkit-scrollbar": { display: "none" },
+            display: "grid",
+            alignItems: "center",
+            justifyItems: "center",
+            gap: { base: 1, md: 3 },
+            gridTemplateAreas: { base: mobileAreas, md: desktopAreas },
+            gridTemplateColumns: {
+              base: "31% 1fr 31%",
+              md: `repeat(${desktopCols}, 1fr)`,
+            },
+            gridTemplateRows: { base: mobileGridRows, md: "auto 1fr" },
           }}
         >
-          <Flex
-            mx="auto"
-            w={{ base: "full", md: "max-content" }}
-            wrap={{ base: "wrap", md: "nowrap" }}
-            gap={{ base: 1, md: 6 }}
-            justify="center"
-          >
-          {opponents.map((player) => {
+          {opponents.map((player, i) => {
             const active = view?.current_player === player.name;
             return (
               <VStack
@@ -574,9 +612,15 @@ const GamePage: React.FC = () => {
                 boxShadow={active ? "lg" : "sm"}
                 spacing={{ base: 0.5, md: 2 }}
                 minW={{ base: 0, md: "130px" }}
-                w={{ base: "calc((100% - 8px) / 3)", md: "auto" }}
+                w={{ base: "full", md: "auto" }}
                 flexShrink={0}
                 justify="center"
+                sx={{
+                  gridArea: {
+                    base: opponentAreas.get(player.name) ?? "l0",
+                    md: `o${i}`,
+                  },
+                }}
               >
                 {/* 手机端紧凑信息:名字+数字各一行,挤进 1/3 宽 */}
                 <VStack spacing={0} align="center" display={{ base: "flex", md: "none" }} w="full">
@@ -654,27 +698,12 @@ const GamePage: React.FC = () => {
               </VStack>
             );
           })}
-          </Flex>
-        </Flex>
 
-        {/* 中央桌面 (市场 & 牌堆) */}
-        <Flex
-          flex={1}
-          justify="center"
-          align="center"
-          direction="column"
-          gap={{ base: 2, md: 6 }}
-          py={{ base: 1, md: 0 }}
-        >
-          <HStack
-            spacing={{ base: 3, md: 12 }}
-            align="center"
-            wrap="wrap"
+          {/* 牌堆与抽牌(网格中央区,纵向居中于左右对手之间) */}
+          <VStack
             justify="center"
-            w={{ base: "full", md: "auto" }}
+            sx={{ gridArea: "c", alignSelf: "stretch", justifySelf: "center" }}
           >
-            {/* 牌堆 */}
-            <VStack>
               <Box
                 w={{ base: "12", md: "24" }}
                 h={{ base: "16", md: "32" }}
@@ -728,7 +757,7 @@ const GamePage: React.FC = () => {
               </Tooltip>
             </VStack>
 
-            {/* 市场(手机端单行横向滑动,避免换行挤压布局) */}
+            {/* 市场(手机端整行贴底、单行横向滑动;桌面端居右半区) */}
             <HStack
               p={{ base: 2, md: 3 }}
               bg="white"
@@ -745,6 +774,8 @@ const GamePage: React.FC = () => {
               gap={{ base: 2, md: 4 }}
               overflowX={{ base: "auto", md: "visible" }}
               sx={{
+                gridArea: "m",
+                justifySelf: "center",
                 scrollbarWidth: "none",
                 "&::-webkit-scrollbar": { display: "none" },
                 "& > *": { flexShrink: 0 },
@@ -813,8 +844,7 @@ const GamePage: React.FC = () => {
                 );
               })}
             </HStack>
-          </HStack>
-        </Flex>
+        </Box>
 
         {/* 3. 玩家区域 (底部,手机端纵向堆叠) */}
         <Flex
@@ -864,7 +894,11 @@ const GamePage: React.FC = () => {
               <Text color="gray.500" fontSize={{ base: "2xs", md: "xs" }} mb={{ base: 1, md: 2 }}>
                 我的投资(已打出)
               </Text>
-              <HStack spacing={{ base: 2, md: 4 }} pb={2} overflowX="auto"
+              <HStack
+                spacing={{ base: 2, md: 4 }}
+                pb={2}
+                overflowX="auto"
+                wrap={{ base: "nowrap", md: "wrap" }}
                 sx={{
                   scrollbarWidth: "none",
                   "&::-webkit-scrollbar": { display: "none" },
@@ -917,9 +951,9 @@ const GamePage: React.FC = () => {
             </Box>
           </VStack>
 
-          {/* 我的手牌(手机端点选卡牌操作) */}
-          <VStack spacing={1}>
-            <Text color="gray.500" fontSize="sm" fontWeight="bold">
+          {/* 我的手牌(手机端点选卡牌操作,整体再压缩一档给对手环绕区让空间) */}
+          <VStack spacing={{ base: 0.5, md: 1 }}>
+            <Text color="gray.500" fontSize={{ base: "xs", md: "sm" }} fontWeight="bold">
               我的手牌
             </Text>
             {canPlay && (
