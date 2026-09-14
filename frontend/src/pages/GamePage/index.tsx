@@ -69,6 +69,42 @@ const GamePage: React.FC = () => {
   const { isConnected, socket, connect, disconnect } = useSocket();
   const toast = useToast();
 
+  // 紧凑提示条:默认 Alert 在手机端过大;自定义渲染缩小尺寸,
+  // 同类广播共用同一 id 互相顶替(不堆叠),最新一条覆盖上一条
+  const notify = useCallback(
+    (
+      title: string,
+      status: "info" | "success" | "warning" | "error",
+      id: string,
+      duration = 2000,
+    ) => {
+      const scheme = { info: "blue", success: "green", warning: "orange", error: "red" }[status];
+      toast({
+        id,
+        duration,
+        position: "top",
+        render: () => (
+          <Box
+            px={{ base: 3, md: 4 }}
+            py={{ base: 1, md: 1.5 }}
+            mt={{ base: 1, md: 2 }}
+            borderRadius="md"
+            bg={`${scheme}.500`}
+            color="white"
+            fontSize={{ base: "2xs", md: "xs" }}
+            fontWeight="medium"
+            boxShadow="md"
+            maxW={{ base: "86vw", md: "sm" }}
+            noOfLines={1}
+          >
+            {title}
+          </Box>
+        ),
+      });
+    },
+    [toast],
+  );
+
   // 房间/身份信息:仅在页面挂载时读取一次,
   // 避免会话中途被其它标签页写入的存储值悄悄改变身份。
   // 身份存 sessionStorage(标签页隔离),多开标签页互不干扰
@@ -130,17 +166,12 @@ const GamePage: React.FC = () => {
           break;
         }
         case "game_started":
-          toast({
-            title: (msg.data as { message?: string }).message || "游戏开始!",
-            status: "success",
-            duration: 2000,
-            position: "top",
-          });
+          notify((msg.data as { message?: string }).message || "游戏开始!", "success", "ws-info");
           break;
         case "action": {
           const data = msg.data as { player_id: string; message: string };
           if (data.player_id !== playerName) {
-            toast({ title: data.message, status: "info", duration: 2000, position: "top" });
+            notify(data.message, "info", "ws-action");
           }
           break;
         }
@@ -152,22 +183,12 @@ const GamePage: React.FC = () => {
           setGameOver(msg.data as unknown as GameOverEvent);
           break;
         case "room_deleted":
-          toast({
-            title: (msg.data as { reason?: string }).reason || "房间已解散",
-            status: "warning",
-            duration: 2500,
-            position: "top",
-          });
+          notify((msg.data as { reason?: string }).reason || "房间已解散", "warning", "ws-info", 2500);
           disconnect();
           navigate("/");
           break;
         case "kicked":
-          toast({
-            title: (msg.data as { reason?: string }).reason || "你已被移出房间",
-            status: "warning",
-            duration: 2500,
-            position: "top",
-          });
+          notify((msg.data as { reason?: string }).reason || "你已被移出房间", "warning", "ws-info", 2500);
           disconnect();
           navigate("/");
           break;
@@ -180,12 +201,7 @@ const GamePage: React.FC = () => {
     // 留在页面只会停在"连接中",提示后退回大厅,便于重新加入。
     const onClose = (event: CloseEvent) => {
       if (event.code === 1008) {
-        toast({
-          title: "连接已失效,请重新加入房间",
-          status: "warning",
-          duration: 2500,
-          position: "top",
-        });
+        notify("连接已失效,请重新加入房间", "warning", "ws-info", 2500);
         navigate("/");
       }
     };
@@ -202,7 +218,7 @@ const GamePage: React.FC = () => {
       socket.removeEventListener("message", onMessage);
       socket.removeEventListener("close", onClose);
     };
-  }, [socket, toast, navigate, disconnect, playerName]);
+  }, [socket, notify, navigate, disconnect, playerName]);
 
   // ====== 派生状态 ======
   const isWaiting = !view || view.status === "waiting";
@@ -253,22 +269,12 @@ const GamePage: React.FC = () => {
         if (status === 403) {
           // 身份校验失败:本地会话已不可信(被顶替/房间已变动),
           // 留在页面只会反复报错,直接退回大厅重新加入
-          toast({
-            title: `${message},请重新加入房间`,
-            status: "error",
-            duration: 2500,
-            position: "top",
-          });
+          notify(`${message},请重新加入房间`, "error", "action-error", 2500);
           disconnect();
           navigate("/");
           return;
         }
-        toast({
-          title: message,
-          status: "error",
-          duration: 2200,
-          position: "top",
-        });
+        notify(message, "error", "action-error", 2200);
       }
     },
     [toast, disconnect, navigate],
@@ -294,29 +300,47 @@ const GamePage: React.FC = () => {
     const isHost = !!view && view.host === playerName;
 
     return (
+      // 手机端压缩间距并隐藏空位占位行,让开始/准备按钮一屏可见,无需下拉
       <Box
-        minH="100vh"
+        minH={{ base: "100dvh", md: "100vh" }}
         bg="gray.50"
         display="flex"
         alignItems="center"
         justifyContent="center"
+        p={{ base: 2, md: 4 }}
       >
-        <VStack spacing={8} p={10} bg="white" borderRadius="2xl" boxShadow="2xl" minW="420px" textAlign="center">
-          <VStack spacing={2}>
-            <Text fontSize="2xl" fontWeight="bold" color="gray.700">
+        <VStack
+          spacing={{ base: 3, md: 8 }}
+          p={{ base: 4, md: 10 }}
+          bg="white"
+          borderRadius={{ base: "xl", md: "2xl" }}
+          boxShadow="2xl"
+          minW={{ base: 0, md: "420px" }}
+          w={{ base: "full", md: "auto" }}
+          textAlign="center"
+        >
+          <VStack spacing={1}>
+            <Text fontSize={{ base: "lg", md: "2xl" }} fontWeight="bold" color="gray.700">
               {view ? "等待游戏开启" : "连接房间中..."}
             </Text>
-            <Text color="gray.500">
+            <Text color="gray.500" fontSize={{ base: "xs", md: "md" }}>
               {view ? "等待好友加入房间..." : "若长时间无响应,请返回大厅重新加入"}
             </Text>
           </VStack>
 
-          <Box p={6} bg="blue.50" borderRadius="xl" borderWidth={1} borderColor="blue.100" w="full">
-            <Text color="blue.600" fontSize="sm" fontWeight="bold" mb={1}>
+          <Box
+            p={{ base: 2.5, md: 6 }}
+            bg="blue.50"
+            borderRadius="xl"
+            borderWidth={1}
+            borderColor="blue.100"
+            w="full"
+          >
+            <Text color="blue.600" fontSize={{ base: "xs", md: "sm" }} fontWeight="bold" mb={1}>
               房间号(邀请码)
             </Text>
             <Text
-              fontSize="4xl"
+              fontSize={{ base: "2xl", md: "4xl" }}
               fontWeight="black"
               color="blue.700"
               letterSpacing="wider"
@@ -328,15 +352,21 @@ const GamePage: React.FC = () => {
 
           {/* 已加入玩家列表 */}
           <Box w="full">
-            <Text fontSize="md" fontWeight="bold" color="gray.600" mb={3} textAlign="left">
+            <Text
+              fontSize={{ base: "xs", md: "md" }}
+              fontWeight="bold"
+              color="gray.600"
+              mb={{ base: 1.5, md: 3 }}
+              textAlign="left"
+            >
               已加入玩家 ({players.length}/{view?.max_players ?? 7})
             </Text>
-            <VStack spacing={3} align="stretch">
+            <VStack spacing={{ base: 1.5, md: 3 }} align="stretch">
               {players.map((player) => (
                 <Flex
                   key={player.name}
                   bg="gray.50"
-                  p={3}
+                  p={{ base: 1.5, md: 3 }}
                   borderRadius="lg"
                   align="center"
                   justify="space-between"
@@ -397,29 +427,34 @@ const GamePage: React.FC = () => {
                   )}
                 </Flex>
               ))}
-              {Array.from({ length: Math.max(0, (view?.max_players ?? 7) - players.length) }).map(
-                (_, i) => (
-                  <Flex
-                    key={`empty-${i}`}
-                    bg="transparent"
-                    p={3}
-                    borderRadius="lg"
-                    align="center"
-                    borderWidth={1}
-                    borderStyle="dashed"
-                    borderColor="gray.300"
-                  >
-                    <Text color="gray.400" fontSize="sm" ml={2}>
-                      等待玩家加入...
-                    </Text>
-                  </Flex>
-                ),
-              )}
+              {/* 空位占位行仅桌面端显示:手机端会占掉大量纵向空间,把开始/准备按钮挤出屏幕 */}
+              <Box display={{ base: "none", md: "block" }}>
+                <VStack spacing={3} align="stretch">
+                  {Array.from({ length: Math.max(0, (view?.max_players ?? 7) - players.length) }).map(
+                    (_, i) => (
+                      <Flex
+                        key={`empty-${i}`}
+                        bg="transparent"
+                        p={3}
+                        borderRadius="lg"
+                        align="center"
+                        borderWidth={1}
+                        borderStyle="dashed"
+                        borderColor="gray.300"
+                      >
+                        <Text color="gray.400" fontSize="sm" ml={2}>
+                          等待玩家加入...
+                        </Text>
+                      </Flex>
+                    ),
+                  )}
+                </VStack>
+              </Box>
             </VStack>
           </Box>
 
           {isHost ? (
-            <VStack w="full" spacing={4}>
+            <VStack w="full" spacing={{ base: 2, md: 4 }}>
               <Button
                 size="sm"
                 colorScheme="purple"
@@ -502,33 +537,46 @@ const GamePage: React.FC = () => {
     COMPANIES.filter((c) => p.antimonopoly?.[String(c)]);
 
   // ====== 对手环绕牌桌布局(手机端)======
-  // ≤4 个对手:全部左右分列(左列可多 1 个);超过 4 个:上排 3 个,其余进左右列。
-  // 某侧只有 1 个对手而侧行有 2 行时,该侧区域跨两行,卡牌保持垂直居中。
+  // 2 人:左右各 1;3 人:左1 上1 右1;4 人:左1 上2 右1;5 人:左2 上1 右2;6 人:左2 上2 右2。
+  // 按顺时针入座:下家从左下角绕桌(左列自下而上、上排从左到右、右列自上而下)。
   const oppCount = opponents.length;
-  const topRow = oppCount > 4 ? opponents.slice(0, 3) : [];
-  const sidePlayers = oppCount > 4 ? opponents.slice(3) : opponents;
-  const leftCol = sidePlayers.slice(0, Math.ceil(sidePlayers.length / 2));
-  const rightCol = sidePlayers.slice(Math.ceil(sidePlayers.length / 2));
-  const sideRows = Math.max(leftCol.length, rightCol.length, 1);
-  const sideArea = (list: PlayerView[], letter: string, row: number) =>
-    list.length === 1 && sideRows === 2 ? `${letter}0` : `${letter}${row}`;
+  const seatCounts: [number, number, number] =
+    oppCount <= 1
+      ? [oppCount, 0, 0]
+      : oppCount === 2
+        ? [1, 0, 1]
+        : oppCount === 3
+          ? [1, 1, 1]
+          : oppCount === 4
+            ? [1, 2, 1]
+            : oppCount === 5
+              ? [2, 1, 2]
+              : [2, 2, 2];
+  const [leftCount, topCount, rightCount] = seatCounts;
+  const mobileSeat = (i: number) =>
+    i < leftCount
+      ? `l${leftCount - 1 - i}` // 左列自下而上
+      : i < leftCount + topCount
+        ? "t"
+        : `r${i - leftCount - topCount}`; // 右列自上而下
+  const sideRows = Math.max(leftCount, rightCount, 1);
   const mobileAreaRows: string[] = [];
-  if (topRow.length > 0) mobileAreaRows.push('"t0 t1 t2"');
-  for (let r = 0; r < sideRows; r++) {
-    mobileAreaRows.push(`"${sideArea(leftCol, "l", r)} c ${sideArea(rightCol, "r", r)}"`);
-  }
+  if (topCount > 0) mobileAreaRows.push('"t t t"');
+  for (let r = 0; r < sideRows; r++) mobileAreaRows.push(`"l${r} c r${r}"`);
   mobileAreaRows.push('"m m m"');
   const mobileAreas = mobileAreaRows.join(" ");
   const mobileGridRows = [
-    ...(topRow.length > 0 ? ["auto"] : []),
+    ...(topCount > 0 ? ["auto"] : []),
     ...Array.from({ length: sideRows }, () => "1fr"),
     "auto",
   ].join(" ");
-  // 每个对手的手机端网格区域(桌面端统一 o0..o5 一行排开)
-  const opponentAreas = new Map<string, string>();
-  topRow.forEach((p, i) => opponentAreas.set(p.name, `t${i}`));
-  leftCol.forEach((p, i) => opponentAreas.set(p.name, sideArea(leftCol, "l", i)));
-  rightCol.forEach((p, i) => opponentAreas.set(p.name, sideArea(rightCol, "r", i)));
+  // 上排与两侧对手分组(保留原始序号,桌面端仍按 o0..o5 一行排开)
+  const opponentEntries = opponents.map((player, i) => ({ player, i }));
+  const topEntries = opponentEntries.slice(leftCount, leftCount + topCount);
+  const sideEntries = [
+    ...opponentEntries.slice(0, leftCount),
+    ...opponentEntries.slice(leftCount + topCount),
+  ];
   // 桌面端复用同一网格:对手一行,下方牌堆占左半、市场占右半
   const desktopCols = Math.max(oppCount, 1);
   const desktopAreas = [
@@ -538,6 +586,110 @@ const GamePage: React.FC = () => {
       () => "m",
     ).join(" ")}"`,
   ].join(" ");
+
+  // 单个对手卡片:桌面端按 o{i} 一行排开;手机端按 mobileSeat 落位,上排可收窄宽度
+  const renderOpponent = (
+    { player, i }: { player: (typeof opponents)[number]; i: number },
+    mobileWidth?: string,
+  ) => {
+    const active = view?.current_player === player.name;
+    return (
+      <VStack
+        key={player.name}
+        bg="white"
+        p={{ base: 1.5, md: 5 }}
+        borderRadius="md"
+        borderWidth={active ? 2 : 0}
+        borderColor={active ? "yellow.400" : "white"}
+        boxShadow={active ? "lg" : "sm"}
+        spacing={{ base: 0.5, md: 2 }}
+        minW={{ base: 0, md: "130px" }}
+        w={{ base: mobileWidth ?? "full", md: "auto" }}
+        flexShrink={0}
+        justify="center"
+        sx={{
+          gridArea: {
+            base: mobileSeat(i),
+            md: `o${i}`,
+          },
+        }}
+      >
+        {/* 手机端紧凑信息:名字+数字各一行,挤进 1/3 宽 */}
+        <VStack spacing={0} align="center" display={{ base: "flex", md: "none" }} w="full">
+          <Text
+            fontSize="2xs"
+            fontWeight="bold"
+            color={active ? "yellow.600" : "gray.700"}
+            maxW="full"
+            isTruncated
+          >
+            {player.name}
+            {player.is_bot && (
+              <Icon as={FaRobot} ml={0.5} boxSize={2.5} color="purple.400" verticalAlign="middle" />
+            )}
+            {player.online === false && (
+              <Badge ml={0.5} fontSize="2xs" colorScheme="gray" px={1}>
+                离线
+              </Badge>
+            )}
+          </Text>
+          <HStack spacing={1} justify="center">
+            <Icon as={FaCoins} boxSize={2.5} color="yellow.500" />
+            <Text fontSize="2xs" color="yellow.600" fontWeight="bold" lineHeight={1}>
+              {player.money ?? 0}
+            </Text>
+            <Text fontSize="2xs" color="blue.500" fontWeight="bold" lineHeight={1}>
+              {player.score ?? 0}分
+            </Text>
+            <Text fontSize="2xs" color="gray.400" lineHeight={1}>
+              手{player.hand_count ?? 0}
+            </Text>
+          </HStack>
+        </VStack>
+        {/* 桌面端信息(原布局) */}
+        <VStack spacing={0} align="center" display={{ base: "none", md: "flex" }}>
+          <Text color="gray.700" fontSize="sm" fontWeight="bold">
+            {player.name}
+            {player.is_bot && (
+              <Badge ml={1} colorScheme="purple" fontSize="2xs">
+                机器人
+              </Badge>
+            )}
+            {player.online === false && (
+              <Badge ml={1} colorScheme="gray" fontSize="2xs">
+                离线
+              </Badge>
+            )}
+            {active && (
+              <Badge ml={1} colorScheme="yellow" fontSize="2xs" variant="solid">
+                行动中
+              </Badge>
+            )}
+          </Text>
+          <HStack spacing={3}>
+            <HStack spacing={1} align="center">
+              <Icon as={FaCoins} color="yellow.500" boxSize={3} />
+              <Text fontSize="xs" color="yellow.600" fontWeight="bold">
+                {player.money ?? 0}
+              </Text>
+            </HStack>
+            <Badge colorScheme="blue" fontSize="2xs">
+              {player.score ?? 0} 分
+            </Badge>
+            <Badge fontSize="2xs" color="gray.500">
+              手牌 {player.hand_count ?? 0}
+            </Badge>
+          </HStack>
+        </VStack>
+        {/* 对手投资情况(横向一行) */}
+        <InvestmentGrid
+          investments={(player.investments ?? {}) as never}
+          tokens={renderTokens(player)}
+          size={opponentCardSize}
+        />
+      </VStack>
+    );
+  };
 
   return (
     // 手机端锁定为一屏高度(dvh 随浏览器工具栏伸缩),各区压缩尺寸,免滚动看全手牌
@@ -580,8 +732,8 @@ const GamePage: React.FC = () => {
 
       {/* 2. 游戏主区域 */}
       <Flex flex={1} minH={0} position="relative" p={{ base: 1.5, md: 4 }} direction="column" overflow="auto">
-        {/* 对手环绕牌桌:手机端 ≤4 人左右分列、>4 人上排 3 个+其余左右列,
-            市场整行贴底,省出的纵向空间给牌桌和手牌;桌面端对手一行+下方牌桌 */}
+        {/* 对手环绕牌桌:手机端按人数环形对称分布(左右列+居中上排),市场整行贴底,
+            省出的纵向空间给牌桌和手牌;桌面端对手一行+下方牌桌 */}
         <Box
           flex={1}
           minH={0}
@@ -599,105 +751,17 @@ const GamePage: React.FC = () => {
             gridTemplateRows: { base: mobileGridRows, md: "auto 1fr" },
           }}
         >
-          {opponents.map((player, i) => {
-            const active = view?.current_player === player.name;
-            return (
-              <VStack
-                key={player.name}
-                bg="white"
-                p={{ base: 1.5, md: 5 }}
-                borderRadius="md"
-                borderWidth={active ? 2 : 0}
-                borderColor={active ? "yellow.400" : "white"}
-                boxShadow={active ? "lg" : "sm"}
-                spacing={{ base: 0.5, md: 2 }}
-                minW={{ base: 0, md: "130px" }}
-                w={{ base: "full", md: "auto" }}
-                flexShrink={0}
-                justify="center"
-                sx={{
-                  gridArea: {
-                    base: opponentAreas.get(player.name) ?? "l0",
-                    md: `o${i}`,
-                  },
-                }}
-              >
-                {/* 手机端紧凑信息:名字+数字各一行,挤进 1/3 宽 */}
-                <VStack spacing={0} align="center" display={{ base: "flex", md: "none" }} w="full">
-                  <Text
-                    fontSize="2xs"
-                    fontWeight="bold"
-                    color={active ? "yellow.600" : "gray.700"}
-                    maxW="full"
-                    isTruncated
-                  >
-                    {player.name}
-                    {player.is_bot && (
-                      <Icon as={FaRobot} ml={0.5} boxSize={2.5} color="purple.400" verticalAlign="middle" />
-                    )}
-                    {player.online === false && (
-                      <Badge ml={0.5} fontSize="2xs" colorScheme="gray" px={1}>
-                        离线
-                      </Badge>
-                    )}
-                  </Text>
-                  <HStack spacing={1} justify="center">
-                    <Icon as={FaCoins} boxSize={2.5} color="yellow.500" />
-                    <Text fontSize="2xs" color="yellow.600" fontWeight="bold" lineHeight={1}>
-                      {player.money ?? 0}
-                    </Text>
-                    <Text fontSize="2xs" color="blue.500" fontWeight="bold" lineHeight={1}>
-                      {player.score ?? 0}分
-                    </Text>
-                    <Text fontSize="2xs" color="gray.400" lineHeight={1}>
-                      手{player.hand_count ?? 0}
-                    </Text>
-                  </HStack>
-                </VStack>
-                {/* 桌面端信息(原布局) */}
-                <VStack spacing={0} align="center" display={{ base: "none", md: "flex" }}>
-                  <Text color="gray.700" fontSize="sm" fontWeight="bold">
-                    {player.name}
-                    {player.is_bot && (
-                      <Badge ml={1} colorScheme="purple" fontSize="2xs">
-                        机器人
-                      </Badge>
-                    )}
-                    {player.online === false && (
-                      <Badge ml={1} colorScheme="gray" fontSize="2xs">
-                        离线
-                      </Badge>
-                    )}
-                    {active && (
-                      <Badge ml={1} colorScheme="yellow" fontSize="2xs" variant="solid">
-                        行动中
-                      </Badge>
-                    )}
-                  </Text>
-                  <HStack spacing={3}>
-                    <HStack spacing={1} align="center">
-                      <Icon as={FaCoins} color="yellow.500" boxSize={3} />
-                      <Text fontSize="xs" color="yellow.600" fontWeight="bold">
-                        {player.money ?? 0}
-                      </Text>
-                    </HStack>
-                    <Badge colorScheme="blue" fontSize="2xs">
-                      {player.score ?? 0} 分
-                    </Badge>
-                    <Badge fontSize="2xs" color="gray.500">
-                      手牌 {player.hand_count ?? 0}
-                    </Badge>
-                  </HStack>
-                </VStack>
-                {/* 对手投资情况(横向一行) */}
-                <InvestmentGrid
-                  investments={(player.investments ?? {}) as never}
-                  tokens={renderTokens(player)}
-                  size={opponentCardSize}
-                />
-              </VStack>
-            );
-          })}
+          {/* 上排对手:手机端在 t 区整行居中并排(拉开间距避免相邻贴住);桌面端 display:contents 融入对手一行 */}
+          <Box
+            display={{ base: topEntries.length > 0 ? "flex" : "none", md: "contents" }}
+            gridArea="t"
+            alignItems="center"
+            justifyContent="center"
+            gap={{ base: 8, md: 0 }}
+          >
+            {topEntries.map((entry) => renderOpponent(entry, "31%"))}
+          </Box>
+          {sideEntries.map((entry) => renderOpponent(entry))}
 
           {/* 牌堆与抽牌(网格中央区,纵向居中于左右对手之间) */}
           <VStack
@@ -1061,26 +1125,48 @@ const GamePage: React.FC = () => {
         </Flex>
       </Flex>
 
-      {/* 回合结算弹窗 */}
-      <Modal isOpen={!!roundSummary} onClose={() => setRoundSummary(null)} isCentered>
+      {/* 回合结算弹窗(motionPreset=none:禁用进出动画,避免退出动画卡死后
+          残留不可见的遮罩层拦截整页点击,导致下一轮无法操作) */}
+      <Modal
+        isOpen={!!roundSummary}
+        onClose={() => setRoundSummary(null)}
+        isCentered
+        motionPreset="none"
+      >
         <ModalOverlay />
         <ModalContent>
           <ModalHeader>第 {roundSummary?.round_number} 轮结算</ModalHeader>
           <ModalBody>
             <VStack align="stretch" spacing={2}>
-              {roundSummary?.standings.map((s) => (
-                <Flex key={s.player_id} justify="space-between" bg="gray.50" p={2} borderRadius="md">
-                  <Text fontWeight="bold">
-                    第{s.rank}名 {s.player_id}
-                  </Text>
-                  <HStack>
-                    <Text color="yellow.600">{s.money} 元</Text>
-                    <Badge colorScheme={s.score_delta! > 0 ? "green" : s.score_delta! < 0 ? "red" : "gray"}>
-                      {s.score_delta! > 0 ? `+${s.score_delta}` : s.score_delta} 分
-                    </Badge>
-                  </HStack>
-                </Flex>
-              ))}
+              {roundSummary?.standings.map((s) => {
+                const isMe = s.player_id === playerName;
+                return (
+                  <Flex
+                    key={s.player_id}
+                    justify="space-between"
+                    bg={isMe ? "blue.50" : "gray.50"}
+                    p={2}
+                    borderRadius="md"
+                    borderWidth={1}
+                    borderColor={isMe ? "blue.300" : "gray.100"}
+                  >
+                    <Text fontWeight="bold" color={isMe ? "blue.600" : "gray.700"}>
+                      第{s.rank}名 {s.player_id}
+                      {isMe && (
+                        <Badge ml={1} colorScheme="blue" fontSize="2xs" verticalAlign="middle">
+                          我
+                        </Badge>
+                      )}
+                    </Text>
+                    <HStack>
+                      <Text color="yellow.600">{s.money} 元</Text>
+                      <Badge colorScheme={s.score_delta! > 0 ? "green" : s.score_delta! < 0 ? "red" : "gray"}>
+                        {s.score_delta! > 0 ? `+${s.score_delta}` : s.score_delta} 分
+                      </Badge>
+                    </HStack>
+                  </Flex>
+                );
+              })}
               {roundSummary &&
                 Object.entries(roundSummary.payouts).map(([company, info]) => {
                   const total = Object.values(info.paid).reduce((a, b) => a + b, 0);
@@ -1100,8 +1186,8 @@ const GamePage: React.FC = () => {
         </ModalContent>
       </Modal>
 
-      {/* 游戏结束弹窗 */}
-      <Modal isOpen={!!gameOver} onClose={() => {}} isCentered>
+      {/* 游戏结束弹窗(同样禁用动画,原因同上) */}
+      <Modal isOpen={!!gameOver} onClose={() => {}} isCentered motionPreset="none">
         <ModalOverlay />
         <ModalContent>
           <ModalHeader>游戏结束 🎉</ModalHeader>
@@ -1110,19 +1196,35 @@ const GamePage: React.FC = () => {
               胜者:{gameOver?.winner}
             </Text>
             <VStack align="stretch" spacing={2}>
-              {gameOver?.standings.map((s) => (
-                <Flex key={s.player_id} justify="space-between" bg="gray.50" p={2} borderRadius="md">
-                  <Text fontWeight="bold">
-                    第{s.rank}名 {s.player_id}
-                  </Text>
-                  <HStack>
-                    <Text color="blue.600">{s.score} 分</Text>
-                    <Text color="yellow.600" fontSize="sm">
-                      {s.money} 元
+              {gameOver?.standings.map((s) => {
+                const isMe = s.player_id === playerName;
+                return (
+                  <Flex
+                    key={s.player_id}
+                    justify="space-between"
+                    bg={isMe ? "blue.50" : "gray.50"}
+                    p={2}
+                    borderRadius="md"
+                    borderWidth={1}
+                    borderColor={isMe ? "blue.300" : "gray.100"}
+                  >
+                    <Text fontWeight="bold" color={isMe ? "blue.600" : "gray.700"}>
+                      第{s.rank}名 {s.player_id}
+                      {isMe && (
+                        <Badge ml={1} colorScheme="blue" fontSize="2xs" verticalAlign="middle">
+                          我
+                        </Badge>
+                      )}
                     </Text>
-                  </HStack>
-                </Flex>
-              ))}
+                    <HStack>
+                      <Text color="blue.600">{s.score} 分</Text>
+                      <Text color="yellow.600" fontSize="sm">
+                        {s.money} 元
+                      </Text>
+                    </HStack>
+                  </Flex>
+                );
+              })}
             </VStack>
           </ModalBody>
           <ModalFooter>
